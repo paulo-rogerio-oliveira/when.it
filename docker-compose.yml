@@ -1,0 +1,59 @@
+services:
+  dbsense-control-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: dbsense-control-db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Dev@2026!"
+    ports:
+      - "1433:1433"
+    volumes:
+      - dbsense-control-data:/var/opt/mssql
+
+  dbsense-api:
+    build:
+      context: .
+      dockerfile: src/DbSense.Api/Dockerfile
+    container_name: dbsense-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__ControlDb: "Server=dbsense-control-db,1433;Database=dbsense_control;User Id=sa;Password=Dev@2026!;TrustServerCertificate=true"
+      Security__EncryptionKey: "8n6kqfZL6lW/1uY2kH3x+dYQHc3t7cZ9mVkR8wT5x1c="
+      Security__JwtSecret: "ZGV2LWp3dC1zZWNyZXQtZG8tbm90LXVzZS1pbi1wcm9kdWN0aW9uLXBsZWFzZS0xMjM0NTY3ODkwYWJjZGVmZ2hpams="
+    ports:
+      - "5000:5000"
+    depends_on:
+      - dbsense-control-db
+
+  dbsense-worker:
+    build:
+      context: .
+      dockerfile: src/DbSense.Worker/Dockerfile
+    container_name: dbsense-worker
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__ControlDb: "Server=dbsense-control-db,1433;Database=dbsense_control;User Id=sa;Password=Dev@2026!;TrustServerCertificate=true"
+      Security__EncryptionKey: "8n6kqfZL6lW/1uY2kH3x+dYQHc3t7cZ9mVkR8wT5x1c="
+    ports:
+      - "5001:5001"
+    depends_on:
+      - dbsense-control-db
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: dbsense-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  sql-server-target:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: dbsense-target-db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Dev@2026!"
+    ports:
+      - "1434:1433"
+
+volumes:
+  dbsense-control-data:

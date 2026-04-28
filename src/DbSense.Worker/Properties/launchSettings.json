@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "DbSense.Worker": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "RuntimeConfig__Path": "C:\\projects\\when.it\\src\\DbSense.Api\\runtime-config.json"
+      }
+    }
+  }
+}

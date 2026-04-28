@@ -1,0 +1,22 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# IDE
+.idea/
+.vscode/
+
+# Node
+node_modules/
+dist/
+
+# Env & secrets
+.env
+.env.local
+appsettings.*.Local.json
+
+# Logs
+*.log

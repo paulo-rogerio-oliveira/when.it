@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(npm --version)",
+      "Bash(docker --version)",
+      "PowerShell(npm *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" --version; Write-Output \"---SDKs:---\"; & \"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" --list-sdks)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet build *)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(git -C C:/projects/when.it log --oneline -20)",
+      "Bash(git -C C:/projects/when.it status)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet list *)",
+      "Bash(dotnet package *)"
+    ]
+  }
+}
