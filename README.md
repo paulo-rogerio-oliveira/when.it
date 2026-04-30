@@ -93,6 +93,18 @@ Gerar uma chave AES-256 base64:
 openssl rand -base64 32
 ```
 
+## Reactions (§6.4 da spec)
+
+Toda regra ativa tem **uma** reaction associada — o que o serviço executa quando o
+trigger casa. O MVP suporta três tipos:
+
+- **`cmd`** — roda um processo (sem shell) com payload via stdin/env. Ex.: `curl` chamando webhook do cliente.
+- **`sql`** — executa SQL parametrizado contra uma `connection` cadastrada. Ex.: `UPDATE outbox_legado SET processado=1 WHERE id=@id`.
+- **`rabbit`** — publica em exchange RabbitMQ via destination cadastrado.
+
+A reaction é configurada no `rule.definition.reaction` e despachada pelo
+`ReactionExecutorWorker` lendo do `dbsense.outbox`.
+
 ## Próximas fatias
 
 Tracking das etapas seguintes do cronograma (seção 14 da spec):

@@ -16,7 +16,8 @@
       "Bash(dotnet sln *)",
       "Bash(dotnet test *)",
       "Bash(dotnet list *)",
-      "Bash(dotnet package *)"
+      "Bash(dotnet package *)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }

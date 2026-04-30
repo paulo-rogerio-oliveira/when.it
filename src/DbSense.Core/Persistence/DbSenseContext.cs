@@ -82,6 +82,11 @@ public class DbSenseContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
             e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Definition).IsRequired();
+            e.Property(x => x.DestinationId).IsRequired(false);
+            e.Property(x => x.SourceRecordingId).IsRequired(false);
+            e.Property(x => x.Description).IsRequired(false);
+            e.Property(x => x.ActivatedAt).IsRequired(false);
         });
 
         b.Entity<EventLog>(e =>
@@ -98,11 +103,13 @@ public class DbSenseContext : DbContext
         {
             e.ToTable("outbox");
             e.HasKey(x => x.Id);
-            e.Property(x => x.Exchange).HasMaxLength(200).IsRequired();
-            e.Property(x => x.RoutingKey).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Payload).IsRequired();
+            e.Property(x => x.ReactionType).HasMaxLength(20).IsRequired();
+            e.Property(x => x.ReactionConfig).IsRequired();
             e.Property(x => x.Status).HasMaxLength(20).IsRequired();
             e.Property(x => x.LockedBy).HasMaxLength(100);
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.HasIndex(x => new { x.LockedBy, x.LockedUntil });
         });
 
         b.Entity<User>(e =>

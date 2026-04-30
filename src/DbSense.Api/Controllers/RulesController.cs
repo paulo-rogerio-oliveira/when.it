@@ -1,5 +1,7 @@
+using System.Text.Json;
 using DbSense.Contracts.Rules;
 using DbSense.Core.Domain;
+using DbSense.Core.Reactions;
 using DbSense.Core.Rules;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,10 +14,12 @@ namespace DbSense.Api.Controllers;
 public class RulesController : ControllerBase
 {
     private readonly IRulesService _service;
+    private readonly IOutboxEnqueuer _enqueuer;
 
-    public RulesController(IRulesService service)
+    public RulesController(IRulesService service, IOutboxEnqueuer enqueuer)
     {
         _service = service;
+        _enqueuer = enqueuer;
     }
 
     [HttpGet]
@@ -49,6 +53,57 @@ public class RulesController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<RuleDetail>> Update(
+        Guid id, [FromBody] UpdateRuleRequest req, CancellationToken ct)
+    {
+        try
+        {
+            var updated = await _service.UpdateAsync(id, req.Name, req.Description, req.Definition, ct);
+            if (updated is null) return NotFound();
+            var row = await _service.GetAsync(updated.Id, ct);
+            return Ok(ToDetail(row!.Value.Rule, row.Value.ConnectionName));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/test-reaction")]
+    public async Task<ActionResult<TestReactionResponse>> TestReaction(
+        Guid id, [FromBody] TestReactionRequest? req, CancellationToken ct)
+    {
+        var row = await _service.GetAsync(id, ct);
+        if (row is null) return NotFound();
+        var rule = row.Value.Rule;
+
+        JsonElement payload;
+        if (req?.Payload is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } provided)
+            payload = provided;
+        else
+            payload = JsonDocument.Parse("""{ "after": { "id": 1 }, "before": null }""").RootElement;
+
+        try
+        {
+            var result = await _enqueuer.EnqueueAsync(new EnqueueRequest(
+                rule, payload, DateTime.UtcNow, $"test:{Guid.NewGuid():N}"), ct);
+            using var doc = JsonDocument.Parse(rule.Definition);
+            var type = doc.RootElement.TryGetProperty("reaction", out var r)
+                && r.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String
+                ? t.GetString()! : "unknown";
+            return Ok(new TestReactionResponse(result.EventsLogId, result.OutboxId, result.IdempotencyKey, type));
         }
         catch (InvalidOperationException ex)
         {

@@ -240,21 +240,21 @@ Log de eventos que disparam regras em produção. **Tabela quente, com retençã
 Índices: `(rule_id, matched_at)`, `(publish_status, matched_at)` filtrado, `(idempotency_key)` UNIQUE.
 
 #### 3.1.7 `dbsense.outbox`
-Padrão transactional outbox. Eventos matched são gravados aqui na mesma transação que escreve em `events_log`. Um processo separado lê daqui e publica em RabbitMQ.
+Padrão transactional outbox. Eventos matched são gravados aqui na mesma transação que escreve em `events_log`. Um processo separado (`ReactionExecutorWorker`) lê daqui e despacha pra reaction correspondente (cmd / sql / rabbit).
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
 | `id` | `bigint` PK identity | |
 | `events_log_id` | `bigint` FK | |
-| `payload` | `nvarchar(max)` | JSON a publicar |
-| `exchange` | `nvarchar(200)` | |
-| `routing_key` | `nvarchar(200)` | |
-| `headers` | `nvarchar(max) NULL` | |
-| `status` | `nvarchar(20)` | `pending` \| `publishing` \| `published` \| `failed` |
+| `payload` | `nvarchar(max)` | JSON do evento (após `shape`) |
+| `reaction_type` | `nvarchar(20)` | `cmd` \| `sql` \| `rabbit` |
+| `reaction_config` | `nvarchar(max)` | Config da reaction com placeholders já expandidos (JSON) |
+| `status` | `nvarchar(20)` | `pending` \| `processing` \| `processed` \| `failed` |
 | `attempts` | `int` | |
 | `next_attempt_at` | `datetime2` | |
 | `locked_by` | `nvarchar(100) NULL` | Instance ID do worker |
 | `locked_until` | `datetime2 NULL` | |
+| `last_error` | `nvarchar(max) NULL` | Mensagem de erro da última tentativa (stdout/stderr para cmd, message do SqlException, etc.) |
 
 Índices: `(status, next_attempt_at)` para worker picking, `(locked_by, locked_until)`.
 
@@ -619,14 +619,11 @@ Regras são armazenadas como JSON na coluna `dbsense.rules.definition`. Versiona
 
   "partition_key": "$.after.id",
 
-  "destination": {
-    "destination_id": "dest_uuid",
-    "exchange": "seguradora.sinistros",
-    "routing_key": "aprovado",
-    "headers": {
-      "rule_id": "$rule.id",
-      "rule_version": "$rule.version"
-    }
+  "reaction": {
+    // O que o serviço executa quando a regra é triggada.
+    // Tipo único, configuração depende do tipo (ver §6.4).
+    "type": "rabbit",                // "cmd" | "sql" | "rabbit"
+    "config": { /* depende do type */ }
   },
 
   "reliability": {
@@ -661,6 +658,97 @@ Regras são armazenadas como JSON na coluna `dbsense.rules.definition`. Versiona
 - `$event.X` — metadados (`timestamp`, `transaction_id`, `session_id`, `app_name`)
 - `$trigger.X` — referência à configuração do trigger
 - `$rule.X` — metadata da regra
+
+### 6.4 Tipos de reaction
+
+Toda regra tem **uma** reaction associada. Quando o trigger casa (e os companions
+required também), o `ReactionExecutorWorker` despacha de acordo com o `reaction.type`.
+
+#### 6.4.1 `cmd` — executar um comando no servidor do worker
+
+Roda um processo (sem shell, via `Process.Start`) com argumentos parametrizados e
+recebe o payload via stdin (JSON) e/ou variáveis de ambiente.
+
+```jsonc
+"reaction": {
+  "type": "cmd",
+  "config": {
+    "executable": "/usr/bin/curl",
+    "args": ["-X", "POST", "https://meusistema.example/webhook"],
+    "send_payload_to_stdin": true,         // payload JSON via STDIN
+    "env": {
+      "DBSENSE_RULE_ID": "$rule.id",
+      "DBSENSE_PAYLOAD": "$payload.json"   // payload completo serializado
+    },
+    "working_directory": null,
+    "timeout_ms": 30000
+  }
+}
+```
+
+Implementação:
+- **Sem shell expansion**. `executable` é o caminho do binário; `args` é uma lista, cada item vira um argv separado. Sem ` | `, ` && `, ` > arquivo` etc.
+- Templates `$rule.X`, `$payload.json`, `$.after.X` resolvidos antes de executar.
+- Stdout/stderr capturados, primeiros 4 KB gravados em `events_log.last_error` se exit code != 0.
+- Reação considerada bem-sucedida se exit code == 0 dentro do `timeout_ms`. Caso contrário entra no fluxo de retry/DLQ via outbox.
+- Permissões: o usuário do processo do worker precisa ter execute permission no `executable` e acesso ao caminho.
+
+#### 6.4.2 `sql` — executar SQL na conexão alvo (ou outra)
+
+Executa um statement SQL com parâmetros derivados do payload contra uma conexão SQL Server cadastrada.
+
+```jsonc
+"reaction": {
+  "type": "sql",
+  "config": {
+    "connection_id": "conn_uuid",          // mesma do trigger ou outra cadastrada
+    "sql": "UPDATE dbo.Outbox SET processado=1 WHERE id = @id",
+    "parameters": {
+      "@id": "$.after.id"
+    },
+    "command_timeout_ms": 10000
+  }
+}
+```
+
+Implementação:
+- `Microsoft.Data.SqlClient` com `SqlCommand` parametrizado (sem string concat).
+- A conexão é a mesma cadastrada em `dbsense.connections`; user precisa ter permissão de escrita na tabela alvo (ou direito de execução em SP).
+- Suporte a `EXEC sp_xyz @p1=...` direto via `CommandType.StoredProcedure` se `sql` começa com `EXEC `.
+
+#### 6.4.3 `rabbit` — publicar em exchange RabbitMQ
+
+Publica em uma exchange via destino RabbitMQ cadastrado.
+
+```jsonc
+"reaction": {
+  "type": "rabbit",
+  "config": {
+    "destination_id": "dest_uuid",         // FK para dbsense.rabbitmq_destinations
+    "exchange": "seguradora.sinistros",
+    "routing_key": "aprovado",
+    "headers": {
+      "rule_id": "$rule.id",
+      "rule_version": "$rule.version"
+    }
+  }
+}
+```
+
+Implementação:
+- Usa `RabbitMQ.Client` com publisher confirms (`confirmSelect`).
+- Pool de connection por `destination_id`.
+- Headers incluem automaticamente `x-idempotency-key`, `x-rule-id`, `x-rule-version`, `content-type: application/json`.
+
+### 6.5 Roteamento da reaction
+
+Independente do tipo, o fluxo é:
+
+1. Matcher detecta o trigger casado, gera o payload via `shape`.
+2. Escreve `events_log` + `outbox` na mesma transação.
+3. `outbox` carrega `reaction_type` e `reaction_config` resolvidos (placeholders já expandidos).
+4. `ReactionExecutorWorker` lê do `outbox` e despacha pra `ICmdReaction`, `ISqlReaction` ou `IRabbitReaction` conforme o tipo.
+5. Sucesso → marca `outbox.status='processed'`. Falha → backoff exponencial até `max_publish_attempts`, depois DLQ.
 
 ---
 
@@ -777,7 +865,7 @@ DbSense.sln
 │   │   ├── Workers/
 │   │   │   ├── XEventsCollectorWorker.cs
 │   │   │   ├── RuleMatcherWorker.cs
-│   │   │   ├── OutboxPublisherWorker.cs
+│   │   │   ├── ReactionExecutorWorker.cs
 │   │   │   └── CommandProcessorWorker.cs
 │   │   └── Program.cs
 │   ├── DbSense.Core/                   # Biblioteca compartilhada
@@ -785,7 +873,7 @@ DbSense.sln
 │   │   ├── Rules/                      # Engine de matching
 │   │   ├── Inference/                  # Algoritmo de inferência
 │   │   ├── XEvents/                    # Wrapper XELite
-│   │   ├── Rabbit/                     # Publisher
+│   │   ├── Reactions/                  # Executors (cmd, sql, rabbit)
 │   │   ├── Persistence/                # DbContext
 │   │   └── Security/                   # Crypto, hashing
 │   └── DbSense.Contracts/              # DTOs, tipos compartilhados
@@ -899,43 +987,67 @@ Tratamento de erros:
 
 Parser de SQL: usa **Microsoft.SqlServer.TransactSql.ScriptDom** (NuGet `Microsoft.SqlServer.DacFx`). Permite parsear `UPDATE`/`INSERT`/`DELETE` e extrair tabelas, colunas, valores, WHERE predicates.
 
-#### 8.3.4 OutboxPublisherWorker
+#### 8.3.4 ReactionExecutorWorker
 - Polla `dbsense.outbox` com status `pending`, ordenado por `next_attempt_at`.
-- Faz lock pessimista simples: `UPDATE TOP (N) ... SET status='publishing', locked_by=@me WHERE status='pending' AND next_attempt_at <= GETUTCDATE() OUTPUT inserted.*`.
-- Publica no RabbitMQ com `confirmSelect` habilitado (publisher confirms).
-- Se sucesso: marca `published`.
-- Se falha: incrementa `attempts`, calcula próximo `next_attempt_at` com backoff, ou manda para DLQ se excedeu `max_publish_attempts`.
+- Faz lock pessimista simples: `UPDATE TOP (N) ... SET status='processing', locked_by=@me WHERE status='pending' AND next_attempt_at <= GETUTCDATE() OUTPUT inserted.*`.
+- Despacha por `reaction_type` para o handler apropriado:
+  - `cmd` → `ICmdReaction` (`Process.Start` sem shell, payload via stdin/env, timeout configurado)
+  - `sql` → `ISqlReaction` (`SqlCommand` parametrizado contra `connection_id` cadastrado)
+  - `rabbit` → `IRabbitReaction` (publish com `confirmSelect`, pool de conexões por destination)
+- Se sucesso: marca `processed`.
+- Se falha: grava `last_error`, incrementa `attempts`, calcula próximo `next_attempt_at` com backoff exponencial, ou marca `failed` (DLQ) se excedeu `max_publish_attempts`.
 - Configuração: batch de 50, paralelismo de 4 tasks.
 
 #### 8.3.5 HealthCheck endpoint
 - HTTP server interno na porta 5001.
 - `GET /health` retorna status de cada worker, contagem de eventos processados, latência.
 
-### 8.4 Publisher RabbitMQ
+### 8.4 Reactions
+
+Cada `reaction.type` é resolvido por um handler dedicado registrado no DI. O
+`ReactionExecutorWorker` faz só o lock + despacho; toda lógica específica vive nos
+handlers, em `DbSense.Core/Reactions/`.
 
 ```csharp
-public interface IRabbitPublisher
+public interface IReactionHandler
 {
-    Task PublishAsync(
-        PublishRequest request,
-        CancellationToken ct = default);
+    string Type { get; }   // "cmd" | "sql" | "rabbit"
+    Task<ReactionResult> ExecuteAsync(ReactionContext ctx, CancellationToken ct = default);
 }
 
-public record PublishRequest(
-    string DestinationId,
-    string Exchange,
-    string RoutingKey,
+public record ReactionContext(
+    long EventsLogId,
     string PayloadJson,
-    IReadOnlyDictionary<string, object>? Headers,
-    string IdempotencyKey);
+    JsonElement Config,         // o reaction_config já com placeholders expandidos
+    string IdempotencyKey,
+    Guid RuleId,
+    int RuleVersion);
+
+public record ReactionResult(
+    bool Success,
+    string? Error,              // primeiros 4 KB de stdout/stderr (cmd), Message (sql), AMQP error
+    int? ExitCode,              // exclusivo do cmd
+    long? AffectedRows);        // exclusivo do sql
 ```
 
-Implementação:
-- Pool de conexões por destino (uma conexão, N channels).
-- `confirmSelect` habilitado.
-- Publish com `mandatory=true` para detectar exchanges inexistentes.
-- Retorna só após confirmação (ou timeout de 10s).
-- Headers: inclui `x-idempotency-key`, `x-rule-id`, `x-rule-version`, `content-type: application/json`.
+Handlers do MVP:
+
+- **`CmdReactionHandler`** (`type: cmd`)
+  - `Process.Start` com `UseShellExecute = false`, `RedirectStandardInput/Output/Error = true`.
+  - Sem expansão de shell — `executable` + `args[]` são passados como argv.
+  - Se `send_payload_to_stdin = true`, escreve o JSON no stdin e fecha.
+  - Aguarda exit com `WaitForExitAsync(timeout_ms)`. Timeout → mata o processo + falha.
+  - Sucesso = exit code 0.
+
+- **`SqlReactionHandler`** (`type: sql`)
+  - `Microsoft.Data.SqlClient.SqlCommand` com parâmetros explícitos.
+  - Connection string montada do `connection_id` (com password decifrada).
+  - Idempotência: hash de `(rule_id, payload_idempotency_key)` em coluna user-defined ou skip se cliente preferir.
+
+- **`RabbitReactionHandler`** (`type: rabbit`)
+  - Pool de conexões por destination (uma conexão, N channels).
+  - `confirmSelect`, `mandatory=true`, retorna após confirm ou timeout de 10s.
+  - Headers automáticos: `x-idempotency-key`, `x-rule-id`, `x-rule-version`, `content-type: application/json`.
 
 ### 8.5 Segurança
 
@@ -1001,11 +1113,14 @@ Implementação:
               └→ INSERT em outbox
            └→ COMMIT
 
-[Publisher publica]
-  └→ OutboxPublisherWorker acorda (ou é notificado)
+[Reaction executa]
+  └→ ReactionExecutorWorker acorda (ou é notificado)
      └→ Lock pessimista em outbox rows pending
-     └→ Publica no RabbitMQ com confirm
-     └→ Atualiza outbox.status=published + events_log.publish_status=published
+     └→ Despacha por reaction_type:
+        ├→ cmd:    Process.Start com payload via stdin/env (timeout)
+        ├→ sql:    SqlCommand parametrizado contra connection_id
+        └→ rabbit: publish com confirmSelect na exchange/routing_key
+     └→ Atualiza outbox.status=processed + events_log.publish_status=published
 ```
 
 ### 9.3 Garantias

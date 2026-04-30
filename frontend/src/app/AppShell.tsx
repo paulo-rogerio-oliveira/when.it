@@ -15,6 +15,7 @@ export function AppShell() {
             <NavItem to="/">Dashboard</NavItem>
             <NavItem to="/connections">Conexões</NavItem>
             <NavItem to="/recordings">Gravações</NavItem>
+            <NavItem to="/rules">Regras</NavItem>
           </nav>
         </div>
         <div className="flex items-center gap-4 text-sm">

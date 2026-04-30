@@ -1,4 +1,5 @@
 using DbSense.Core.Persistence;
+using DbSense.Core.Reactions;
 using DbSense.Core.Security;
 using DbSense.Core.Setup;
 using DbSense.Core.XEvents;
@@ -27,7 +28,13 @@ builder.Services.AddSingleton<IDbContextFactory<DbSenseContext>>(sp =>
 
 builder.Services.AddSingleton<IRecordingCollector, RecordingCollector>();
 
+builder.Services.AddSingleton<IReactionHandler, CmdReactionHandler>();
+builder.Services.AddSingleton<IReactionHandler, SqlReactionHandler>();
+builder.Services.AddSingleton<IReactionHandler, RabbitReactionHandler>();
+builder.Services.AddSingleton<IReactionDispatcher, ReactionDispatcher>();
+
 builder.Services.AddHostedService<CommandProcessorWorker>();
+builder.Services.AddHostedService<ReactionExecutorWorker>();
 
 var host = builder.Build();
 host.Run();

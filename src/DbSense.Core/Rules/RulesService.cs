@@ -12,6 +12,10 @@ public interface IRulesService
         Guid connectionId, Guid? sourceRecordingId,
         string name, string? description, string definitionJson,
         CancellationToken ct = default);
+    Task<Rule?> UpdateAsync(
+        Guid id,
+        string name, string? description, string definitionJson,
+        CancellationToken ct = default);
 }
 
 public class RulesService : IRulesService
@@ -78,6 +82,40 @@ public class RulesService : IRulesService
             UpdatedAt = now
         };
         ctx.Rules.Add(rule);
+        await ctx.SaveChangesAsync(ct);
+        return rule;
+    }
+
+    public async Task<Rule?> UpdateAsync(
+        Guid id,
+        string name, string? description, string definitionJson,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Nome obrigatório.", nameof(name));
+        if (string.IsNullOrWhiteSpace(definitionJson))
+            throw new ArgumentException("Definição obrigatória.", nameof(definitionJson));
+
+        // Valida JSON minimamente
+        try { System.Text.Json.JsonDocument.Parse(definitionJson); }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new ArgumentException($"Definição não é JSON válido: {ex.Message}", nameof(definitionJson));
+        }
+
+        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+        var rule = await ctx.Rules.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (rule is null) return null;
+
+        if (rule.Status is "active" or "archived")
+            throw new InvalidOperationException(
+                $"Regra em status '{rule.Status}' não pode ser editada. Pause antes de editar.");
+
+        rule.Name = name.Trim();
+        rule.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        rule.Definition = definitionJson;
+        rule.Version += 1;
+        rule.UpdatedAt = DateTime.UtcNow;
         await ctx.SaveChangesAsync(ct);
         return rule;
     }

@@ -330,7 +330,7 @@ public class InferenceService : IInferenceService
             },
             ["shape"] = BuildShape(afterFields),
             ["partition_key"] = partitionKey is null ? null : $"$.after.{partitionKey}",
-            ["destination"] = null,
+            ["reaction"] = null,        // preenchido pelo usuário no review/editor antes de ativar (§6.4)
             ["reliability"] = new JsonObject
             {
                 ["dedupe_window_s"] = 60,

@@ -33,3 +33,17 @@ public record CreateRuleRequest(
     string Name,
     string? Description,
     string Definition);
+
+public record UpdateRuleRequest(
+    string Name,
+    string? Description,
+    string Definition);
+
+public record TestReactionRequest(
+    System.Text.Json.JsonElement? Payload);
+
+public record TestReactionResponse(
+    long EventsLogId,
+    long OutboxId,
+    string IdempotencyKey,
+    string ReactionType);

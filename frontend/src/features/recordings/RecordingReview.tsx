@@ -18,6 +18,13 @@ import {
   type InferRuleResponse,
   type InferredRulePayload,
 } from "@/shared/api/rules";
+import {
+  ReactionEditor,
+  emptyReactionState,
+  mergeReactionIntoDefinition,
+  reactionStateValid,
+  type ReactionState,
+} from "@/shared/components/ReactionEditor";
 
 type Engine = "heuristic" | "llm";
 
@@ -36,6 +43,7 @@ export function RecordingReview() {
   });
   const [savingEngine, setSavingEngine] = useState<Engine | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [reaction, setReaction] = useState<ReactionState>(() => emptyReactionState());
 
   useEffect(() => {
     let cancelled = false;
@@ -87,17 +95,31 @@ export function RecordingReview() {
     if (!rule) return;
     const draft = draftByEngine[engine];
 
+    const validity = reactionStateValid(reaction);
+    if (!validity.valid) {
+      setSaveError(validity.reason ?? "Reaction inválida.");
+      return;
+    }
+
+    let definition = rule.definitionJson;
+    try {
+      definition = mergeReactionIntoDefinition(rule.definitionJson, reaction);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Falha ao montar reaction.");
+      return;
+    }
+
     setSavingEngine(engine);
     setSaveError(null);
     try {
-      await createRule({
+      const created = await createRule({
         connectionId: state.rec.connectionId,
         sourceRecordingId: state.rec.id,
         name: draft.name.trim(),
         description: draft.description.trim() || undefined,
-        definition: rule.definitionJson,
+        definition,
       });
-      navigate(`/recordings`);
+      navigate(`/rules/${created.id}`);
     } catch (e) {
       const msg = (e as { response?: { data?: { error?: string } }; message?: string })
         ?.response?.data?.error
@@ -107,6 +129,8 @@ export function RecordingReview() {
       setSavingEngine(null);
     }
   };
+
+  const reactionValid = reactionStateValid(reaction).valid;
 
   if (state.kind === "loading") return <p className="text-sm text-muted-foreground">Carregando…</p>;
   if (state.kind === "error") return <Alert variant="destructive">{state.message}</Alert>;
@@ -139,6 +163,8 @@ export function RecordingReview() {
 
       {saveError && <Alert variant="destructive">{saveError}</Alert>}
 
+      <ReactionEditor state={reaction} onChange={setReaction} />
+
       <div className={`grid gap-4 ${showLlm ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}>
         <EngineCard
           title="Heurística"
@@ -154,7 +180,7 @@ export function RecordingReview() {
           onNameChange={(v) => setDraftByEngine((d) => ({ ...d, heuristic: { ...d.heuristic, name: v } }))}
           onDescriptionChange={(v) => setDraftByEngine((d) => ({ ...d, heuristic: { ...d.heuristic, description: v } }))}
           saving={savingEngine === "heuristic"}
-          disabledSave={savingEngine !== null}
+          disabledSave={savingEngine !== null || !reactionValid}
           onSave={() => onSave("heuristic")}
         />
 
@@ -176,7 +202,7 @@ export function RecordingReview() {
             onNameChange={(v) => setDraftByEngine((d) => ({ ...d, llm: { ...d.llm, name: v } }))}
             onDescriptionChange={(v) => setDraftByEngine((d) => ({ ...d, llm: { ...d.llm, description: v } }))}
             saving={savingEngine === "llm"}
-            disabledSave={savingEngine !== null}
+            disabledSave={savingEngine !== null || !reactionValid}
             onSave={() => onSave("llm")}
           />
         )}
@@ -446,3 +472,4 @@ function formatDuration(start: string, end: string) {
   const s = total % 60;
   return `${m}m${s.toString().padStart(2, "0")}s`;
 }
+

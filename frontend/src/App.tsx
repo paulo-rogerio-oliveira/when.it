@@ -9,6 +9,8 @@ import { RecordingList } from "./features/recordings/RecordingList";
 import { RecordingWizard } from "./features/recordings/RecordingWizard";
 import { RecordingSession } from "./features/recordings/RecordingSession";
 import { RecordingReview } from "./features/recordings/RecordingReview";
+import { RuleList } from "./features/rules/RuleList";
+import { RuleEditor } from "./features/rules/RuleEditor";
 import { AppShell } from "./app/AppShell";
 import { useAuth } from "./app/auth-provider";
 import { getSetupStatus } from "./shared/api/setup";
@@ -67,6 +69,8 @@ function AuthedRoutes() {
         <Route path="/recordings/new" element={<RecordingWizard />} />
         <Route path="/recordings/:id/session" element={<RecordingSession />} />
         <Route path="/recordings/:id/review" element={<RecordingReview />} />
+        <Route path="/rules" element={<RuleList />} />
+        <Route path="/rules/:id" element={<RuleEditor />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -35,6 +35,7 @@ builder.Services.AddScoped<DbSense.Core.Connections.IConnectionsService, DbSense
 builder.Services.AddScoped<DbSense.Core.Recordings.IRecordingsService, DbSense.Core.Recordings.RecordingsService>();
 builder.Services.AddScoped<DbSense.Core.Inference.IInferenceService, DbSense.Core.Inference.InferenceService>();
 builder.Services.AddScoped<DbSense.Core.Rules.IRulesService, DbSense.Core.Rules.RulesService>();
+builder.Services.AddScoped<DbSense.Core.Reactions.IOutboxEnqueuer, DbSense.Core.Reactions.OutboxEnqueuer>();
 
 builder.Services.Configure<DbSense.Core.Inference.LlmOptions>(
     builder.Configuration.GetSection(DbSense.Core.Inference.LlmOptions.SectionName));

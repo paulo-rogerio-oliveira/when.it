@@ -29,6 +29,12 @@ export type CreateRuleInput = {
   definition: string;
 };
 
+export type UpdateRuleInput = {
+  name: string;
+  description?: string;
+  definition: string;
+};
+
 export type InferredPredicateClause = { field: string; op: string; value: string };
 
 export type InferredCompanion = {
@@ -102,5 +108,22 @@ export async function listRules() {
 
 export async function getRule(id: string) {
   const r = await api.get<RuleDetail>(`/rules/${id}`);
+  return r.data;
+}
+
+export async function updateRule(id: string, input: UpdateRuleInput) {
+  const r = await api.put<RuleDetail>(`/rules/${id}`, input);
+  return r.data;
+}
+
+export type TestReactionResult = {
+  eventsLogId: number;
+  outboxId: number;
+  idempotencyKey: string;
+  reactionType: string;
+};
+
+export async function testReaction(id: string, payload?: unknown) {
+  const r = await api.post<TestReactionResult>(`/rules/${id}/test-reaction`, { payload });
   return r.data;
 }
