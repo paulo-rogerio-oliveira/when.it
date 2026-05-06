@@ -1,20 +1,48 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Alert } from "@/shared/components/ui/alert";
-import { listRecordings, type RecordingListItem } from "@/shared/api/recordings";
+import {
+  deleteRecording, listRecordings, type RecordingListItem
+} from "@/shared/api/recordings";
 
 export function RecordingList() {
   const navigate = useNavigate();
   const [items, setItems] = useState<RecordingListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
     listRecordings()
       .then(setItems)
       .catch((e) => setError(e instanceof Error ? e.message : "Falha ao carregar."));
-  }, []);
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function handleDelete(item: RecordingListItem) {
+    if (item.status === "recording") {
+      alert("Pare a gravação antes de excluí-la.");
+      return;
+    }
+    if (!window.confirm(`Excluir a gravação "${item.name}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+    setError(null);
+    setDeletingId(item.id);
+    try {
+      await deleteRecording(item.id);
+      refresh();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "Falha ao excluir.");
+      setError(msg);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -79,14 +107,27 @@ export function RecordingList() {
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">{r.eventCount}</td>
                   <td className="px-4 py-2 text-right">
-                    <Link
-                      to={r.status === "recording"
-                        ? `/recordings/${r.id}/session`
-                        : `/recordings/${r.id}/review`}
-                      className="text-sm font-medium text-primary hover:underline"
-                    >
-                      {r.status === "recording" ? "Abrir" : "Revisar"}
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        to={r.status === "recording"
+                          ? `/recordings/${r.id}/session`
+                          : `/recordings/${r.id}/review`}
+                        className="text-sm font-medium text-primary hover:underline"
+                      >
+                        {r.status === "recording" ? "Abrir" : "Revisar"}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(r)}
+                        disabled={r.status === "recording" || deletingId === r.id}
+                        title={r.status === "recording"
+                          ? "Pare a gravação antes de excluir"
+                          : "Excluir gravação"}
+                        className="text-muted-foreground hover:text-red-600 disabled:opacity-30 disabled:hover:text-muted-foreground"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

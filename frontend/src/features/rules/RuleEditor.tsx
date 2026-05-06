@@ -5,7 +5,15 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { getRule, testReaction, updateRule, type RuleDetail, type TestReactionResult } from "@/shared/api/rules";
+import {
+  activateRule,
+  getRule,
+  pauseRule,
+  testReaction,
+  updateRule,
+  type RuleDetail,
+  type TestReactionResult,
+} from "@/shared/api/rules";
 import {
   ReactionEditor,
   emptyReactionState,
@@ -107,6 +115,32 @@ export function RuleEditor() {
       setError(msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onActivate = async () => {
+    setError(null);
+    try {
+      const updated = await activateRule(rule.id);
+      setState({ kind: "ready", rule: updated });
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })
+        ?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "Falha ao ativar.");
+      setError(msg);
+    }
+  };
+
+  const onPause = async () => {
+    setError(null);
+    try {
+      const updated = await pauseRule(rule.id);
+      setState({ kind: "ready", rule: updated });
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })
+        ?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "Falha ao pausar.");
+      setError(msg);
     }
   };
 
@@ -261,7 +295,14 @@ export function RuleEditor() {
         </pre>
       </details>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        {rule.status === "active" ? (
+          <Button variant="outline" onClick={onPause}>Pausar</Button>
+        ) : (
+          <Button variant="outline" onClick={onActivate} disabled={rule.status === "archived"}>
+            Ativar
+          </Button>
+        )}
         <Button onClick={onSave} disabled={lockedForEdit || saving || !name.trim()}>
           {saving ? "Salvando…" : "Salvar alterações"}
         </Button>

@@ -43,7 +43,8 @@ public class ReactionExecutorWorker : BackgroundService
         {
             await using var ctx = await _contextFactory.CreateDbContextAsync(stoppingToken);
             await OutboxSchemaMigrator.EnsureUpToDateAsync(ctx, stoppingToken);
-            _logger.LogInformation("Outbox schema verificado/migrado.");
+            await RecordingSchemaMigrator.EnsureUpToDateAsync(ctx, stoppingToken);
+            _logger.LogInformation("Outbox + Recording schema verificados/migrados.");
         }
         catch (Exception ex)
         {

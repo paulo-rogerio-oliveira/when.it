@@ -14,9 +14,13 @@ public interface IOutboxEnqueuer
     Task<EnqueueResult> EnqueueAsync(EnqueueRequest req, CancellationToken ct = default);
 }
 
+// Payload         = JSON publicado (após shape se houver) — gravado em events_log/outbox.Payload.
+// RawPayload      = JSON cru com { after, _meta } — usado pra resolver placeholders na reaction
+//                   config; expandir contra Payload quebraria $.after.X quando há shape ativo.
 public record EnqueueRequest(
     Rule Rule,
     JsonElement Payload,
+    JsonElement RawPayload,
     DateTime SqlTimestamp,
     string IdempotencyKeySuffix);
 
@@ -36,8 +40,10 @@ public class OutboxEnqueuer : IOutboxEnqueuer
         var (reactionType, configJson) = ExtractReaction(req.Rule.Definition)
             ?? throw new InvalidOperationException("Regra não tem reaction configurada.");
 
+        // Resolve contra o RAW (não o shaped): placeholders $.after.X / $trigger.X / $event.X
+        // sempre apontam pros campos do evento original, independente de a rule ter shape ativo.
         var resolvedConfig = PlaceholderExpander.Expand(
-            configJson, req.Payload, req.Rule.Id, req.Rule.Version);
+            configJson, req.RawPayload, req.Rule.Id, req.Rule.Version);
 
         var idempotencyKey = ComputeIdempotencyKey(req.Rule.Id, req.Rule.Version, req.IdempotencyKeySuffix);
         var payloadJson = req.Payload.GetRawText();

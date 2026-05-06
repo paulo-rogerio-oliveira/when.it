@@ -1,5 +1,6 @@
 using DbSense.Core.Domain;
 using DbSense.Core.Persistence;
+using DbSense.Core.Rules;
 using DbSense.Core.XEvents;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,15 +13,18 @@ public class CommandProcessorWorker : BackgroundService
 
     private readonly IDbContextFactory<DbSenseContext> _contextFactory;
     private readonly IRecordingCollector _collector;
+    private readonly IActiveRulesCache _rulesCache;
     private readonly ILogger<CommandProcessorWorker> _logger;
 
     public CommandProcessorWorker(
         IDbContextFactory<DbSenseContext> contextFactory,
         IRecordingCollector collector,
+        IActiveRulesCache rulesCache,
         ILogger<CommandProcessorWorker> logger)
     {
         _contextFactory = contextFactory;
         _collector = collector;
+        _rulesCache = rulesCache;
         _logger = logger;
     }
 
@@ -84,6 +88,10 @@ public class CommandProcessorWorker : BackgroundService
                         return ("failed", "target_id ausente");
                     await _collector.StopAsync(cmd.TargetId.Value, ct);
                     return ("processed", "stopped");
+
+                case "reload_rules":
+                    await _rulesCache.RefreshAsync(ct);
+                    return ("processed", "rules reloaded");
 
                 default:
                     _logger.LogDebug("Unknown command {Command} (id={Id}).", cmd.Command, cmd.Id);

@@ -81,6 +81,31 @@ public class RulesController : ControllerBase
         }
     }
 
+    [HttpPost("{id:guid}/activate")]
+    public async Task<ActionResult<RuleDetail>> Activate(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var updated = await _service.ActivateAsync(id, ct);
+            if (updated is null) return NotFound();
+            var row = await _service.GetAsync(updated.Id, ct);
+            return Ok(ToDetail(row!.Value.Rule, row.Value.ConnectionName));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/pause")]
+    public async Task<ActionResult<RuleDetail>> Pause(Guid id, CancellationToken ct)
+    {
+        var updated = await _service.PauseAsync(id, ct);
+        if (updated is null) return NotFound();
+        var row = await _service.GetAsync(updated.Id, ct);
+        return Ok(ToDetail(row!.Value.Rule, row.Value.ConnectionName));
+    }
+
     [HttpPost("{id:guid}/test-reaction")]
     public async Task<ActionResult<TestReactionResponse>> TestReaction(
         Guid id, [FromBody] TestReactionRequest? req, CancellationToken ct)
@@ -93,7 +118,10 @@ public class RulesController : ControllerBase
         if (req?.Payload is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null } provided)
             payload = provided;
         else
-            payload = JsonDocument.Parse("""{ "after": { "id": 1 }, "before": null }""").RootElement;
+        {
+            using var doc = JsonDocument.Parse("""{ "after": { "id": 1 }, "before": null }""");
+            payload = doc.RootElement.Clone();
+        }
 
         try
         {

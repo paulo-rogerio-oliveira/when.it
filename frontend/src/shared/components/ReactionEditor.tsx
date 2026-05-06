@@ -1,4 +1,3 @@
-import { Alert } from "@/shared/components/ui/alert";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -83,8 +82,33 @@ export function ReactionEditor({
         {state.type === "cmd" && <CmdEditor cmd={state.cmd} onChange={setCmd} />}
         {state.type === "sql" && <SqlEditor sql={state.sql} onChange={setSql} />}
         {state.type === "rabbit" && <RabbitEditor rabbit={state.rabbit} onChange={setRabbit} />}
+
+        {state.type !== "none" && <PlaceholdersHelp />}
       </CardContent>
     </Card>
+  );
+}
+
+function PlaceholdersHelp() {
+  return (
+    <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-3 text-xs">
+      <p className="mb-1 font-semibold text-slate-700">Macros disponíveis</p>
+      <ul className="space-y-0.5 text-slate-600">
+        <li>
+          <code className="font-mono">$.after.&lt;coluna&gt;</code> — valor da coluna no INSERT/UPDATE
+          (ou no WHERE do DELETE). Os valores ficam visíveis no review da gravação.
+        </li>
+        <li>
+          <code className="font-mono">$event.timestamp</code> — timestamp do evento que disparou.
+        </li>
+        <li>
+          <code className="font-mono">$rule.id</code> e <code className="font-mono">$rule.version</code> — identificam a regra.
+        </li>
+      </ul>
+      <p className="mt-1 text-slate-500">
+        Use os macros em qualquer campo (executável/args, SQL, routing key, headers, JSON de parâmetros).
+      </p>
+    </div>
   );
 }
 

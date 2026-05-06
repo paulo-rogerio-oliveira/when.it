@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/client.ts","./src/api/hooks.ts","./src/api/types.ts","./src/components/empresaselector.tsx","./src/components/layout.tsx","./src/pages/dashboard.tsx","./src/pages/empresas.tsx","./src/pages/lancamentos.tsx","./src/pages/planocontas.tsx","./src/store/empresa.ts"],"version":"5.9.3"}

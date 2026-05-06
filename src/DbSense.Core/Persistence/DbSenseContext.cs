@@ -71,6 +71,7 @@ public class DbSenseContext : DbContext
             e.Property(x => x.AppName).HasMaxLength(200);
             e.Property(x => x.HostName).HasMaxLength(200);
             e.Property(x => x.LoginName).HasMaxLength(200);
+            e.Property(x => x.ParsedPayload).HasColumnType("nvarchar(max)");
             e.HasOne(x => x.Recording).WithMany().HasForeignKey(x => x.RecordingId);
             e.HasIndex(x => new { x.RecordingId, x.EventTimestamp });
             e.HasIndex(x => new { x.RecordingId, x.TransactionId });

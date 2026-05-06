@@ -15,6 +15,7 @@ public interface IRecordingsService
         CancellationToken ct = default);
     Task<Recording?> StopAsync(Guid id, CancellationToken ct = default);
     Task<Recording?> DiscardAsync(Guid id, CancellationToken ct = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
     Task<(IReadOnlyList<RecordingEvent> Items, int Total)> ListEventsAsync(
         Guid id, long? afterId, int limit, CancellationToken ct = default);
 }
@@ -125,6 +126,31 @@ public class RecordingsService : IRecordingsService
         rec.Status = "discarded";
         await ctx.SaveChangesAsync(ct);
         return rec;
+    }
+
+    // Deleção física da gravação. Bloqueia se a gravação ainda está rodando — o usuário
+    // precisa parar antes (evita race com o RecordingCollector tentando persistir eventos
+    // enquanto o registro já não existe mais). Regras que referenciavam a gravação ficam
+    // preservadas: só desassociam (SourceRecordingId = NULL).
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+        var rec = await ctx.Recordings.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (rec is null) return false;
+        if (rec.Status == "recording")
+            throw new InvalidOperationException("Pare a gravação antes de excluí-la.");
+
+        await ctx.Rules
+            .Where(r => r.SourceRecordingId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.SourceRecordingId, (Guid?)null), ct);
+
+        await ctx.RecordingEvents
+            .Where(e => e.RecordingId == id)
+            .ExecuteDeleteAsync(ct);
+
+        ctx.Recordings.Remove(rec);
+        await ctx.SaveChangesAsync(ct);
+        return true;
     }
 
     public async Task<(IReadOnlyList<RecordingEvent> Items, int Total)> ListEventsAsync(

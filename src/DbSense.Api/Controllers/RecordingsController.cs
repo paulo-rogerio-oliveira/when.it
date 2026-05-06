@@ -83,6 +83,20 @@ public class RecordingsController : ControllerBase
         return Ok(ToDetail(row!.Value.Recording, row.Value.ConnectionName));
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var ok = await _service.DeleteAsync(id, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("{id:guid}/infer-rule")]
     public async Task<ActionResult<InferRuleResponse>> InferRule(Guid id, CancellationToken ct)
     {
@@ -146,5 +160,5 @@ public class RecordingsController : ControllerBase
     private static RecordingEventItem ToEvent(RecordingEvent e) => new(
         e.Id, e.EventTimestamp, e.EventType, e.SessionId, e.DatabaseName,
         e.ObjectName, e.SqlText, e.DurationUs, e.RowCount,
-        e.AppName, e.HostName, e.LoginName, e.TransactionId);
+        e.AppName, e.HostName, e.LoginName, e.TransactionId, e.ParsedPayload);
 }

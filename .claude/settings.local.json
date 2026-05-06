@@ -17,7 +17,21 @@
       "Bash(dotnet test *)",
       "Bash(dotnet list *)",
       "Bash(dotnet package *)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(dotnet run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5100/)",
+      "Bash(curl -s http://localhost:5100/api/empresas)",
+      "Bash(dotnet *)",
+      "Bash(ConnectionStrings__Default=\"Server=localhost;Database=contabilidade_sandbox;Trusted_Connection=true;TrustServerCertificate=true;Encrypt=true\" ASPNETCORE_URLS=\"http://localhost:5100\" dotnet *)",
+      "Bash(curl -s -m 3 http://localhost:5100/api/empresas)",
+      "Bash(ConnectionStrings__Default=\"Server=localhost,1433;Database=contabilidade_sandbox;User Id=sa;Password=Dev@2026!;TrustServerCertificate=true\" ASPNETCORE_URLS=\"http://localhost:5100\" dotnet *)",
+      "Bash(curl -s -m 5 http://localhost:5100/api/empresas)",
+      "Bash(netstat -ano)",
+      "Bash(sc query *)",
+      "Bash(ConnectionStrings__Default=\"Server=.\\\\\\\\SQLEXPRESS;Database=contabilidade_sandbox;Trusted_Connection=true;TrustServerCertificate=true;Encrypt=false\" ASPNETCORE_URLS=\"http://localhost:5100\" dotnet *)",
+      "Bash(python -c \"import sys, json; print\\('Total:', json.load\\(sys.stdin\\)['total']\\)\")",
+      "Bash(taskkill //F //PID 804)",
+      "Bash(npm --prefix \"C:/projects/when.it/frontend\" run build)"
     ]
   }
 }

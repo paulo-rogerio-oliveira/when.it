@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text.Json;
 using System.Xml.Linq;
 using DbSense.Core.Domain;
+using DbSense.Core.Inference;
 using DbSense.Core.Persistence;
 using DbSense.Core.Security;
 using Microsoft.Data.SqlClient;
@@ -156,6 +158,12 @@ public class RecordingCollector : IRecordingCollector
 
     private async Task PersistAsync(Guid recordingId, List<RecordingEvent> events, CancellationToken token)
     {
+        // Parseia cada evento agora (no momento da gravação) pra que o review possa
+        // exibir os valores resolvidos e a inferência possa enriquecer o trigger sem
+        // ter que reparsear o sqlText cada vez.
+        foreach (var ev in events)
+            ev.ParsedPayload = BuildParsedPayload(ev);
+
         try
         {
             await using var ctx = await _contextFactory.CreateDbContextAsync(CancellationToken.None);
@@ -167,6 +175,38 @@ public class RecordingCollector : IRecordingCollector
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to persist {Count} events for recording {Id}.", events.Count, recordingId);
+        }
+    }
+
+    private static string? BuildParsedPayload(RecordingEvent ev)
+    {
+        // SqlText é o batch_text do XE: pra sql_batch_completed é o T-SQL ad-hoc inteiro;
+        // pra rpc_completed é o EXEC sp_executesql N'...', @p0=... — ambos casos contêm
+        // os valores que o SqlParser/TryUnwrapSpExecuteSql precisam pra resolver @pN.
+        var text = ev.SqlText;
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        try
+        {
+            var dmls = SqlParser.TryParseAll(text);
+            if (dmls.Count == 0) return null;
+
+            return JsonSerializer.Serialize(new
+            {
+                statements = dmls.Select(d => new
+                {
+                    operation = d.Operation.ToString().ToLowerInvariant(),
+                    schema = d.Schema,
+                    table = d.Table,
+                    columns = d.Columns,
+                    values = d.Values,
+                    where = d.Where.Select(w => new { column = w.Column, op = w.Operator, value = w.ValueLiteral })
+                })
+            });
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -260,14 +300,17 @@ WHERE s.name = @name AND t.target_name = 'ring_buffer';";
         var pred = string.Join(" AND ", predicateParts);
         var actions = "ACTION (sqlserver.database_name, sqlserver.session_id, sqlserver.client_app_name, sqlserver.client_hostname, sqlserver.username, sqlserver.transaction_id)";
 
+        // Mesmo conjunto de eventos da production XE session: sql_batch_completed (ad-hoc)
+        // + rpc_completed (sp_executesql/EF). sp_statement_completed é omitido porque ele
+        // só carrega o statement com @pN (sem valores), e duplica com rpc_completed quando
+        // ambos estão ativos. Os canais batch/rpc não se sobrepõem entre si.
         var ddl = $@"
 IF EXISTS(SELECT 1 FROM sys.server_event_sessions WHERE name = N{Q(sessionName)})
     DROP EVENT SESSION {QuoteName(sessionName)} ON SERVER;
 
 CREATE EVENT SESSION {QuoteName(sessionName)} ON SERVER
     ADD EVENT sqlserver.sql_batch_completed({actions} WHERE ({pred})),
-    ADD EVENT sqlserver.rpc_completed({actions} WHERE ({pred})),
-    ADD EVENT sqlserver.sp_statement_completed({actions} WHERE ({pred}))
+    ADD EVENT sqlserver.rpc_completed({actions} WHERE ({pred}))
     ADD TARGET package0.ring_buffer(SET max_memory=(8192))
     WITH (EVENT_RETENTION_MODE=ALLOW_SINGLE_EVENT_LOSS, MAX_DISPATCH_LATENCY=1 SECONDS);
 

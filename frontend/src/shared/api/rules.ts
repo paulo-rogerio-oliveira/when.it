@@ -123,6 +123,16 @@ export type TestReactionResult = {
   reactionType: string;
 };
 
+export async function activateRule(id: string) {
+  const r = await api.post<RuleDetail>(`/rules/${id}/activate`);
+  return r.data;
+}
+
+export async function pauseRule(id: string) {
+  const r = await api.post<RuleDetail>(`/rules/${id}/pause`);
+  return r.data;
+}
+
 export async function testReaction(id: string, payload?: unknown) {
   const r = await api.post<TestReactionResult>(`/rules/${id}/test-reaction`, { payload });
   return r.data;

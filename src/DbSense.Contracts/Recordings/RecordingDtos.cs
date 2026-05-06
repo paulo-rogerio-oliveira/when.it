@@ -47,7 +47,8 @@ public record RecordingEventItem(
     string? AppName,
     string? HostName,
     string? LoginName,
-    long? TransactionId);
+    long? TransactionId,
+    string? ParsedPayload);
 
 public record RecordingEventsPage(
     IReadOnlyList<RecordingEventItem> Items,

@@ -11,6 +11,7 @@ import {
   type RecordingDetail,
   type RecordingEventItem,
 } from "@/shared/api/recordings";
+import { ParsedPayloadBlock } from "./RecordingReview";
 
 const POLL_MS = 1500;
 
@@ -232,6 +233,7 @@ function EventRow({ ev }: { ev: RecordingEventItem }) {
       <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono">
         {ev.sqlText}
       </pre>
+      <ParsedPayloadBlock payload={ev.parsedPayload} />
     </li>
   );
 }

@@ -30,6 +30,19 @@ export type CreateRecordingInput = {
   filterLoginName?: string;
 };
 
+export type ParsedDmlStatement = {
+  operation: "insert" | "update" | "delete";
+  schema: string | null;
+  table: string;
+  columns: string[];
+  values: Record<string, string | null>;
+  where: { column: string; op: string; value: string }[];
+};
+
+export type ParsedPayload = {
+  statements: ParsedDmlStatement[];
+};
+
 export type RecordingEventItem = {
   id: number;
   eventTimestamp: string;
@@ -44,7 +57,14 @@ export type RecordingEventItem = {
   hostName: string | null;
   loginName: string | null;
   transactionId: number | null;
+  parsedPayload: string | null;
 };
+
+export function parseRecordingPayload(raw: string | null): ParsedPayload | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as ParsedPayload; }
+  catch { return null; }
+}
 
 export type RecordingEventsPage = {
   items: RecordingEventItem[];
@@ -75,6 +95,10 @@ export async function stopRecording(id: string) {
 export async function discardRecording(id: string) {
   const r = await api.post<RecordingDetail>(`/recordings/${id}/discard`);
   return r.data;
+}
+
+export async function deleteRecording(id: string) {
+  await api.delete(`/recordings/${id}`);
 }
 
 export async function listRecordingEvents(id: string, after?: number, limit = 100) {

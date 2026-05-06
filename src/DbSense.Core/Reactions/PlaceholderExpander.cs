@@ -55,6 +55,27 @@ public static class PlaceholderExpander
         if (s == "$rule.version")
             return JsonValue.Create(ruleVersion);
 
+        // Aliases pra _meta (compat com shapes gerados pelo InferenceService.BuildShape):
+        //   $event.timestamp     → $._meta.captured_at
+        //   $trigger.table       → $._meta.table
+        //   $trigger.schema      → $._meta.schema
+        //   $trigger.operation   → $._meta.operation
+        var aliasPath = s switch
+        {
+            "$event.timestamp"   => "_meta.captured_at",
+            "$trigger.table"     => "_meta.table",
+            "$trigger.schema"    => "_meta.schema",
+            "$trigger.operation" => "_meta.operation",
+            _ => null
+        };
+        if (aliasPath is not null)
+        {
+            var aliased = ResolvePath(payload, aliasPath);
+            return aliased is null
+                ? JsonValue.Create((string?)null)
+                : JsonNode.Parse(aliased.Value.GetRawText());
+        }
+
         if (s.StartsWith("$.", StringComparison.Ordinal))
         {
             var resolved = ResolvePath(payload, s[2..]);

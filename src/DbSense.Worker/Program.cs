@@ -1,5 +1,6 @@
 using DbSense.Core.Persistence;
 using DbSense.Core.Reactions;
+using DbSense.Core.Rules;
 using DbSense.Core.Security;
 using DbSense.Core.Setup;
 using DbSense.Core.XEvents;
@@ -32,9 +33,14 @@ builder.Services.AddSingleton<IReactionHandler, CmdReactionHandler>();
 builder.Services.AddSingleton<IReactionHandler, SqlReactionHandler>();
 builder.Services.AddSingleton<IReactionHandler, RabbitReactionHandler>();
 builder.Services.AddSingleton<IReactionDispatcher, ReactionDispatcher>();
+builder.Services.AddSingleton<IOutboxEnqueuer, OutboxEnqueuer>();
+
+builder.Services.AddSingleton<IActiveRulesCache, ActiveRulesCache>();
+builder.Services.AddSingleton<IRuleEngine, RuleEngine>();
 
 builder.Services.AddHostedService<CommandProcessorWorker>();
 builder.Services.AddHostedService<ReactionExecutorWorker>();
+builder.Services.AddHostedService<RuleMatcherWorker>();
 
 var host = builder.Build();
 host.Run();

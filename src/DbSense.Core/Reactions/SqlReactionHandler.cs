@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json;
 using DbSense.Core.Persistence;
 using DbSense.Core.Security;
+using DbSense.Core.XEvents;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,7 +48,12 @@ public class SqlReactionHandler : IReactionHandler
             InitialCatalog = connection.Database,
             TrustServerCertificate = true,
             Encrypt = true,
-            ConnectTimeout = 10
+            ConnectTimeout = 10,
+            // Marca a conexão da reaction como tráfego do próprio Worker — o filtro
+            // das XE sessions (sql_batch_completed/rpc_completed) exclui client_app_name
+            // = "DbSense.Worker", evitando que o INSERT/UPDATE da reaction polua a
+            // própria gravação ou dispare uma rule recursivamente.
+            ApplicationName = ProductionXeStream.SelfAppName
         };
         if (string.Equals(connection.AuthType, "windows", StringComparison.OrdinalIgnoreCase))
             csb.IntegratedSecurity = true;

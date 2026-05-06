@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/sha
 import {
   getRecording,
   listRecordingEvents,
+  parseRecordingPayload,
   type RecordingDetail,
   type RecordingEventItem,
 } from "@/shared/api/recordings";
@@ -439,7 +440,63 @@ function EventRow({
         </p>
       )}
       <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono">{ev.sqlText}</pre>
+      <ParsedPayloadBlock payload={ev.parsedPayload} />
     </li>
+  );
+}
+
+// Mostra os DMLs parseados com schema/table e valores resolvidos. Esses valores são
+// exatamente o que vai estar disponível como $.after.<coluna> nos placeholders das reactions.
+export function ParsedPayloadBlock({ payload }: { payload: string | null }) {
+  const parsed = parseRecordingPayload(payload);
+  if (!parsed || parsed.statements.length === 0) return null;
+
+  return (
+    <div className="mt-2 space-y-2">
+      {parsed.statements.map((s, idx) => {
+        const columnsWithValues = Object.keys(s.values);
+        const fqtn = `${s.schema ? s.schema + "." : ""}${s.table}`;
+        return (
+          <div key={idx} className="rounded-md border border-slate-200 bg-white/70 p-2">
+            <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500">
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">
+                {s.operation}
+              </span>
+              <span className="font-mono">{fqtn}</span>
+            </div>
+            {columnsWithValues.length > 0 && (
+              <table className="w-full text-[11px]">
+                <tbody>
+                  {columnsWithValues.map((col) => (
+                    <tr key={col} className="border-t border-slate-100 first:border-t-0">
+                      <td className="py-0.5 pr-3 font-mono text-slate-600">$.after.{col}</td>
+                      <td className="py-0.5 font-mono text-slate-900">
+                        {s.values[col] === null
+                          ? <span className="text-slate-400">NULL</span>
+                          : s.values[col]}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {s.where.length > 0 && (
+              <div className="mt-1 border-t border-slate-100 pt-1 text-[11px]">
+                <span className="text-slate-500">WHERE: </span>
+                <span className="font-mono">
+                  {s.where.map((w, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="text-slate-400"> AND </span>}
+                      {w.column} {w.op} {w.value}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

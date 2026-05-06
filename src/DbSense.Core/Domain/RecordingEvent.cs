@@ -21,6 +21,9 @@ public class RecordingEvent
     public string? LoginName { get; set; }
     public long? TransactionId { get; set; }
     public string? RawPayload { get; set; }
+    // JSON com o resultado de SqlParser.TryParseAll(SqlText) — array de DMLs com
+    // schema/table/values/where resolvidos (incluindo @pN do sp_executesql substituídos).
+    public string? ParsedPayload { get; set; }
 
     public Recording? Recording { get; set; }
 }

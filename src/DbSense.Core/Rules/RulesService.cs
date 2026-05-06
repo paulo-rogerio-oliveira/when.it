@@ -16,6 +16,8 @@ public interface IRulesService
         Guid id,
         string name, string? description, string definitionJson,
         CancellationToken ct = default);
+    Task<Rule?> ActivateAsync(Guid id, CancellationToken ct = default);
+    Task<Rule?> PauseAsync(Guid id, CancellationToken ct = default);
 }
 
 public class RulesService : IRulesService
@@ -118,5 +120,65 @@ public class RulesService : IRulesService
         rule.UpdatedAt = DateTime.UtcNow;
         await ctx.SaveChangesAsync(ct);
         return rule;
+    }
+
+    public async Task<Rule?> ActivateAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+        var rule = await ctx.Rules.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (rule is null) return null;
+
+        if (!HasReaction(rule.Definition))
+            throw new InvalidOperationException("Regra não pode ser ativada sem reaction configurada.");
+
+        rule.Status = "active";
+        rule.ActivatedAt ??= DateTime.UtcNow;
+        rule.UpdatedAt = DateTime.UtcNow;
+
+        await EnqueueReloadCommandAsync(ctx, ct);
+        await ctx.SaveChangesAsync(ct);
+        return rule;
+    }
+
+    public async Task<Rule?> PauseAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+        var rule = await ctx.Rules.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (rule is null) return null;
+
+        rule.Status = "paused";
+        rule.UpdatedAt = DateTime.UtcNow;
+
+        await EnqueueReloadCommandAsync(ctx, ct);
+        await ctx.SaveChangesAsync(ct);
+        return rule;
+    }
+
+    private static bool HasReaction(string definitionJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(definitionJson);
+            return doc.RootElement.TryGetProperty("reaction", out var r)
+                && r.ValueKind == System.Text.Json.JsonValueKind.Object
+                && r.TryGetProperty("type", out var t)
+                && t.ValueKind == System.Text.Json.JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(t.GetString());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Task EnqueueReloadCommandAsync(DbSenseContext ctx, CancellationToken ct)
+    {
+        ctx.WorkerCommands.Add(new WorkerCommand
+        {
+            Command = "reload_rules",
+            IssuedAt = DateTime.UtcNow,
+            Status = "pending"
+        });
+        return Task.CompletedTask;
     }
 }
