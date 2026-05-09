@@ -5,6 +5,11 @@ namespace DbSense.Core.Reactions;
 
 // Resolve placeholders ($.after.X, $.before.X, $payload.json, $rule.id, $rule.version)
 // dentro de strings de uma config JSON. Retorna a config "resolvida" como string JSON.
+//
+// Limitação do $.before: monitoramento por XEvent não captura row state, só o SQL.
+// Logo, before só carrega colunas que apareceram em predicados eq do WHERE (ex.:
+// WHERE id=5 → before.id=5). Pra UPDATE com SET de coluna que não está no WHERE,
+// $.before.<coluna> resolve pra null.
 public static class PlaceholderExpander
 {
     public static string Expand(

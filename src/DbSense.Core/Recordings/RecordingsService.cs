@@ -130,8 +130,8 @@ public class RecordingsService : IRecordingsService
 
     // Deleção física da gravação. Bloqueia se a gravação ainda está rodando — o usuário
     // precisa parar antes (evita race com o RecordingCollector tentando persistir eventos
-    // enquanto o registro já não existe mais). Regras que referenciavam a gravação ficam
-    // preservadas: só desassociam (SourceRecordingId = NULL).
+    // enquanto o registro já não existe mais). Regras criadas a partir desta gravação
+    // também são removidas, junto com execuções pendentes/histórico dessas regras.
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
         await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
@@ -140,15 +140,43 @@ public class RecordingsService : IRecordingsService
         if (rec.Status == "recording")
             throw new InvalidOperationException("Pare a gravação antes de excluí-la.");
 
-        await ctx.Rules
+        var linkedRules = await ctx.Rules
             .Where(r => r.SourceRecordingId == id)
-            .ExecuteUpdateAsync(s => s.SetProperty(r => r.SourceRecordingId, (Guid?)null), ct);
+            .ToListAsync(ct);
+        var linkedRuleIds = linkedRules.Select(r => r.Id).ToList();
+        var hadActiveRules = linkedRules.Any(r => r.Status == "active");
 
-        await ctx.RecordingEvents
+        if (linkedRuleIds.Count > 0)
+        {
+            var linkedEventLogIds = await ctx.EventsLog
+                .Where(e => linkedRuleIds.Contains(e.RuleId))
+                .Select(e => e.Id)
+                .ToListAsync(ct);
+
+            if (linkedEventLogIds.Count > 0)
+            {
+                var linkedOutbox = await ctx.Outbox
+                    .Where(o => linkedEventLogIds.Contains(o.EventsLogId))
+                    .ToListAsync(ct);
+                ctx.Outbox.RemoveRange(linkedOutbox);
+            }
+
+            var linkedEventLogs = await ctx.EventsLog
+                .Where(e => linkedRuleIds.Contains(e.RuleId))
+                .ToListAsync(ct);
+            ctx.EventsLog.RemoveRange(linkedEventLogs);
+            ctx.Rules.RemoveRange(linkedRules);
+        }
+
+        var recordingEvents = await ctx.RecordingEvents
             .Where(e => e.RecordingId == id)
-            .ExecuteDeleteAsync(ct);
+            .ToListAsync(ct);
+        ctx.RecordingEvents.RemoveRange(recordingEvents);
 
         ctx.Recordings.Remove(rec);
+        if (hadActiveRules)
+            ctx.WorkerCommands.Add(BuildCommand("reload_rules", Guid.Empty, payload: null, DateTime.UtcNow));
+
         await ctx.SaveChangesAsync(ct);
         return true;
     }

@@ -18,6 +18,7 @@ public interface IRulesService
         CancellationToken ct = default);
     Task<Rule?> ActivateAsync(Guid id, CancellationToken ct = default);
     Task<Rule?> PauseAsync(Guid id, CancellationToken ct = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
 }
 
 public class RulesService : IRulesService
@@ -152,6 +153,38 @@ public class RulesService : IRulesService
         await EnqueueReloadCommandAsync(ctx, ct);
         await ctx.SaveChangesAsync(ct);
         return rule;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var ctx = await _contextFactory.CreateDbContextAsync(ct);
+        var rule = await ctx.Rules.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (rule is null) return false;
+
+        var eventLogIds = await ctx.EventsLog
+            .Where(e => e.RuleId == id)
+            .Select(e => e.Id)
+            .ToListAsync(ct);
+
+        if (eventLogIds.Count > 0)
+        {
+            var outbox = await ctx.Outbox
+                .Where(o => eventLogIds.Contains(o.EventsLogId))
+                .ToListAsync(ct);
+            ctx.Outbox.RemoveRange(outbox);
+        }
+
+        var eventsLog = await ctx.EventsLog
+            .Where(e => e.RuleId == id)
+            .ToListAsync(ct);
+        ctx.EventsLog.RemoveRange(eventsLog);
+        ctx.Rules.Remove(rule);
+
+        if (rule.Status == "active")
+            await EnqueueReloadCommandAsync(ctx, ct);
+
+        await ctx.SaveChangesAsync(ct);
+        return true;
     }
 
     private static bool HasReaction(string definitionJson)

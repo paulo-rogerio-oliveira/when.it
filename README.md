@@ -30,6 +30,7 @@ A spec de referência continua em `spec-dbsense-mvp.md`. Este README descreve o 
 │   ├── DbSense.Core/        # Domain, EF, parser, inferência, engine, reactions, security
 │   └── DbSense.Contracts/   # DTOs compartilhados
 ├── frontend/                # Vite + React + TS + Tailwind (UI principal do DbSense)
+├── electron/                # Shell desktop: sobe API + Worker + UI numa BrowserWindow
 ├── sandbox/                 # App alvo de teste (contabilidade) — ver sandbox/README.md
 └── docs/                    # Documentação técnica (arquitetura, reações)
 ```
@@ -69,7 +70,35 @@ npm install
 npm run dev                                # http://localhost:5173
 ```
 
-### 4. Sandbox (opcional, mas recomendado pra validar)
+### 4. Electron (opcional — single-window desktop)
+
+Sobe API + Worker + Vite numa janela só, com cleanup automático no fechamento:
+
+```bash
+cd electron
+npm install
+npm run dev    # API:5000 + Worker + Vite:5173 → BrowserWindow
+```
+
+**Empacotando o `.exe`** (NSIS installer + portable, x64):
+
+```bash
+cd electron
+npm run dist        # build:frontend + publish:api + publish:worker + electron-builder
+# saída em electron/dist/DbSense-<versão>-x64.exe (installer) e DbSense-<versão>-x64-portable.exe
+```
+
+`npm run dist:dir` produz só a pasta unpacked (útil pra debug, sem instalador).
+
+No primeiro launch do `.exe`, é gerado `%APPDATA%/DbSense/dbsense.config.json` com
+secrets aleatórios (encryption key + JWT) e a connection string de control DB
+default — edite esse arquivo se o seu SQL Server estiver em outro host. O
+`runtime-config.json` do setup wizard também vai pra `%APPDATA%/DbSense/`.
+
+Pré-requisitos: SQL Server acessível e `.NET 10 SDK` no PATH (necessário pro
+`dotnet publish --self-contained` que empacota os runtimes da API/Worker).
+
+### 5. Sandbox (opcional, mas recomendado pra validar)
 
 ```bash
 dotnet run --project sandbox/Contabilidade.Sandbox.Api    # http://localhost:5100
@@ -147,6 +176,7 @@ openssl rand -base64 32
 
 - **[docs/architecture.md](docs/architecture.md)** — pipeline interno (XE config, parser, engine stateful, idempotência, scopes, schema migrations).
 - **[docs/reactions.md](docs/reactions.md)** — tipos de reaction, tabela de placeholders/macros, exemplos práticos, troubleshooting.
+- **[docs/production.md](docs/production.md)** — checklist de permissões, retenção, segurança, backup e operação.
 - **[sandbox/README.md](sandbox/README.md)** — app de contabilidade pra exercitar o pipeline.
 - **`spec-dbsense-mvp.md`** — spec original.
 

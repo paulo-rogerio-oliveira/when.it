@@ -62,6 +62,7 @@ public class RuleEngine : IRuleEngine
             return Array.Empty<RuleMatch>();
 
         var afterFields = BuildAfterFields(dml);
+        var beforeFields = BuildBeforeFields(dml);
         var operation = OperationToString(dml.Operation);
         var connState = _state.GetOrAdd(connectionId, _ => new ConnectionState());
         var completed = new List<RuleMatch>();
@@ -105,7 +106,7 @@ public class RuleEngine : IRuleEngine
 
                 var (scope, waitMs, requiredCompanions) = ParseCorrelation(rule);
                 var rawPayload = BuildPayloadElement(
-                    afterFields, ctx.Timestamp, dml.Table, dml.Schema, operation);
+                    afterFields, beforeFields, ctx.Timestamp, dml.Table, dml.Schema, operation);
                 var shaped = TryApplyShape(rule, rawPayload) ?? rawPayload;
                 var idemSuffix = BuildIdempotencyKeySuffix(connectionId, ctx, dml);
 
@@ -337,6 +338,7 @@ public class RuleEngine : IRuleEngine
 
     private static JsonElement BuildPayloadElement(
         IReadOnlyDictionary<string, string> after,
+        IReadOnlyDictionary<string, string> before,
         DateTime eventTimestamp,
         string triggerTable,
         string? triggerSchema,
@@ -349,6 +351,17 @@ public class RuleEngine : IRuleEngine
             w.WritePropertyName("after");
             w.WriteStartObject();
             foreach (var kvp in after)
+            {
+                if (string.IsNullOrEmpty(kvp.Value)) w.WriteNull(kvp.Key);
+                else w.WriteString(kvp.Key, kvp.Value);
+            }
+            w.WriteEndObject();
+            // before: derivado dos predicados eq do WHERE — só temos dados pras colunas que o
+            // statement filtrou (ex.: WHERE id=5 AND status='A'). Pra colunas em SET sem filtro
+            // correspondente no WHERE, before fica ausente (XEvent não captura row state).
+            w.WritePropertyName("before");
+            w.WriteStartObject();
+            foreach (var kvp in before)
             {
                 if (string.IsNullOrEmpty(kvp.Value)) w.WriteNull(kvp.Key);
                 else w.WriteString(kvp.Key, kvp.Value);
@@ -368,6 +381,24 @@ public class RuleEngine : IRuleEngine
         ms.Position = 0;
         using var doc = JsonDocument.Parse(ms.ToArray());
         return doc.RootElement.Clone();
+    }
+
+    // before só pode ser derivado dos predicados eq do WHERE: pra DELETE cobre a linha inteira
+    // que conhecemos; pra UPDATE cobre as colunas filtradas (incluindo, quando aplicável, a coluna
+    // que está sendo SET — ex.: UPDATE T SET status='B' WHERE status='A' → before.status='A').
+    // INSERT não tem WHERE, então before fica vazio.
+    private static IReadOnlyDictionary<string, string> BuildBeforeFields(ParsedDml dml)
+    {
+        if (dml.Operation == DmlOperation.Insert)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in dml.Where)
+        {
+            if (p.Operator == "eq")
+                dict[p.Column] = p.ValueLiteral;
+        }
+        return dict;
     }
 
     private static IReadOnlyDictionary<string, string> BuildAfterFields(ParsedDml dml)

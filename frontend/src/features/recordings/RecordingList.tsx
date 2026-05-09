@@ -27,7 +27,9 @@ export function RecordingList() {
       alert("Pare a gravação antes de excluí-la.");
       return;
     }
-    if (!window.confirm(`Excluir a gravação "${item.name}"? Esta ação não pode ser desfeita.`)) {
+    if (!window.confirm(
+      `Excluir a gravação "${item.name}"? As regras e reactions criadas a partir dela também serão removidas. Esta ação não pode ser desfeita.`,
+    )) {
       return;
     }
     setError(null);

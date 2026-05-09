@@ -106,6 +106,13 @@ public class RulesController : ControllerBase
         return Ok(ToDetail(row!.Value.Rule, row.Value.ConnectionName));
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var ok = await _service.DeleteAsync(id, ct);
+        return ok ? NoContent() : NotFound();
+    }
+
     [HttpPost("{id:guid}/test-reaction")]
     public async Task<ActionResult<TestReactionResponse>> TestReaction(
         Guid id, [FromBody] TestReactionRequest? req, CancellationToken ct)
@@ -125,8 +132,11 @@ public class RulesController : ControllerBase
 
         try
         {
+            // Endpoint de teste manual: o payload fornecido pelo usuário serve tanto
+            // como shaped (gravado em events_log) quanto como raw (alvo dos placeholders
+            // na reaction config) — não há shape pra aplicar nem trigger pra registrar.
             var result = await _enqueuer.EnqueueAsync(new EnqueueRequest(
-                rule, payload, DateTime.UtcNow, $"test:{Guid.NewGuid():N}"), ct);
+                rule, payload, payload, DateTime.UtcNow, $"test:{Guid.NewGuid():N}"), ct);
             using var doc = JsonDocument.Parse(rule.Definition);
             var type = doc.RootElement.TryGetProperty("reaction", out var r)
                 && r.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String

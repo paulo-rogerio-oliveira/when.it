@@ -1,0 +1,61 @@
+{
+  "name": "dbsense-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Shell Electron que sobe API, Worker e frontend do DbSense em uma única janela.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env DBSENSE_MODE=dev electron .",
+    "build:frontend": "npm --prefix ../frontend run build",
+    "publish:api": "dotnet publish ../src/DbSense.Api/DbSense.Api.csproj -c Release -r win-x64 --self-contained true -o ./binaries/api -p:DebugType=None -p:DebugSymbols=false",
+    "publish:worker": "dotnet publish ../src/DbSense.Worker/DbSense.Worker.csproj -c Release -r win-x64 --self-contained true -o ./binaries/worker -p:DebugType=None -p:DebugSymbols=false",
+    "prepack": "npm run build:frontend && npm run publish:api && npm run publish:worker",
+    "dist": "npm run prepack && electron-builder --win --x64",
+    "dist:dir": "npm run prepack && electron-builder --win --x64 --dir"
+  },
+  "build": {
+    "appId": "com.dbsense.desktop",
+    "productName": "DbSense",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "package.json",
+      "node_modules/**/*",
+      "!**/*.map",
+      "!**/*.md"
+    ],
+    "extraResources": [
+      { "from": "binaries/api",          "to": "api",          "filter": ["**/*"] },
+      { "from": "binaries/worker",       "to": "worker",       "filter": ["**/*"] },
+      { "from": "../frontend/dist",      "to": "frontend-dist","filter": ["**/*"] }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis",     "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "artifactName": "DbSense-${version}-${arch}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "DbSense-${version}-${arch}-Portable.${ext}"
+    }
+  },
+  "dependencies": {
+    "tree-kill": "^1.2.2"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

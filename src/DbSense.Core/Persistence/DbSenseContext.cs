@@ -47,6 +47,8 @@ public class DbSenseContext : DbContext
             e.Property(x => x.Username).HasMaxLength(200).IsRequired();
             e.Property(x => x.DefaultExchange).HasMaxLength(200).IsRequired();
             e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.LastTestedAt).IsRequired(false);
+            e.Property(x => x.LastError).IsRequired(false);
         });
 
         b.Entity<Recording>(e =>

@@ -17,11 +17,28 @@ public class SecretCipher : ISecretCipher
     {
         var raw = options.Value.EncryptionKey;
         if (string.IsNullOrWhiteSpace(raw))
-            throw new InvalidOperationException("Security:EncryptionKey is not configured.");
+            throw new InvalidOperationException(
+                "Security:EncryptionKey is not configured. " +
+                "Set the environment variable Security__EncryptionKey (base64-encoded 32 bytes), " +
+                "or define Security:EncryptionKey in appsettings.json. " +
+                "When launched via the Electron shell, the key is generated automatically into " +
+                "%APPDATA%/DbSense/dbsense.config.json on first run.");
 
-        _key = Convert.FromBase64String(raw);
+        try
+        {
+            _key = Convert.FromBase64String(raw);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException(
+                "Security:EncryptionKey is not valid base64. " +
+                "Generate a key with: [Convert]::ToBase64String((1..32 | % { [byte](Get-Random -Min 0 -Max 256) })).",
+                ex);
+        }
+
         if (_key.Length != 32)
-            throw new InvalidOperationException("Security:EncryptionKey must decode to 32 bytes (AES-256).");
+            throw new InvalidOperationException(
+                $"Security:EncryptionKey decoded to {_key.Length} bytes; AES-256 requires exactly 32.");
     }
 
     public byte[] Encrypt(string plaintext)

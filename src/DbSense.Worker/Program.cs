@@ -29,6 +29,7 @@ builder.Services.AddSingleton<IDbContextFactory<DbSenseContext>>(sp =>
 
 builder.Services.AddSingleton<IRecordingCollector, RecordingCollector>();
 
+builder.Services.AddSingleton<IRabbitConnectionPool, RabbitConnectionPool>();
 builder.Services.AddSingleton<IReactionHandler, CmdReactionHandler>();
 builder.Services.AddSingleton<IReactionHandler, SqlReactionHandler>();
 builder.Services.AddSingleton<IReactionHandler, RabbitReactionHandler>();

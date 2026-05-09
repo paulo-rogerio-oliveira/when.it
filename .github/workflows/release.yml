@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Permite disparar manualmente do UI do GitHub (útil pra testar empacotamento
+  # sem precisar mexer em tag).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag pra anexar a release (ex.: v0.1.0). Vazio = só gera artifacts.'
+        required: false
+
+jobs:
+  windows-installer:
+    name: Build .exe (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write   # gh release upload precisa disso
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            electron/package-lock.json
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~\.nuget\packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          # Cobre o download do binário do Electron + winCodeSign + nsis.
+          # Sem isso, todo run baixa ~120 MB de cada um.
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('electron/package-lock.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install electron deps
+        working-directory: electron
+        run: npm ci
+
+      # `npm run dist` encadeia: build:frontend + publish:api + publish:worker + electron-builder.
+      # GH_TOKEN evita que o electron-builder tente publicar em release automática
+      # (deixamos o softprops/action-gh-release fazer isso depois, controlado).
+      - name: Build installer + portable
+        working-directory: electron
+        env:
+          GH_TOKEN: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbsense-windows-x64
+          path: |
+            electron/dist/*.exe
+            electron/dist/*.exe.blockmap
+            electron/dist/latest.yml
+          retention-days: 30
+
+      - name: Create GitHub Release
+        # Só cria release quando vem de tag ou quando o input do dispatch foi preenchido.
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ github.event.inputs.tag || github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            electron/dist/*.exe
+            electron/dist/*.exe.blockmap
+            electron/dist/latest.yml

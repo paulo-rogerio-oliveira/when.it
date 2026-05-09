@@ -1,18 +1,46 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import { Alert } from "@/shared/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { listRules, type RuleListItem } from "@/shared/api/rules";
+import { deleteRule, listRules, type RuleListItem } from "@/shared/api/rules";
 
 export function RuleList() {
   const [items, setItems] = useState<RuleListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
     listRules()
       .then(setItems)
       .catch((e) => setError(e instanceof Error ? e.message : "Falha ao carregar."));
-  }, []);
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function handleDelete(item: RuleListItem) {
+    const activeWarning = item.status === "active"
+      ? " Ela está ativa e será removida do Worker."
+      : "";
+    if (!window.confirm(
+      `Excluir a regra "${item.name}"?${activeWarning} O histórico e outbox ligados a ela também serão removidos. Esta ação não pode ser desfeita.`,
+    )) {
+      return;
+    }
+
+    setError(null);
+    setDeletingId(item.id);
+    try {
+      await deleteRule(item.id);
+      refresh();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "Falha ao excluir.");
+      setError(msg);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -75,9 +103,20 @@ export function RuleList() {
                     {new Date(r.updatedAt).toLocaleString()}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link to={`/rules/${r.id}`} className="text-sm font-medium text-primary hover:underline">
-                      Editar reaction
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link to={`/rules/${r.id}`} className="text-sm font-medium text-primary hover:underline">
+                        Editar reaction
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(r)}
+                        disabled={deletingId === r.id}
+                        title="Excluir regra"
+                        className="text-muted-foreground hover:text-red-600 disabled:opacity-30 disabled:hover:text-muted-foreground"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

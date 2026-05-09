@@ -116,6 +116,10 @@ export async function updateRule(id: string, input: UpdateRuleInput) {
   return r.data;
 }
 
+export async function deleteRule(id: string) {
+  await api.delete(`/rules/${id}`);
+}
+
 export type TestReactionResult = {
   eventsLogId: number;
   outboxId: number;

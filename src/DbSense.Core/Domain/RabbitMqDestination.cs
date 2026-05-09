@@ -12,5 +12,7 @@ public class RabbitMqDestination
     public bool UseTls { get; set; }
     public string DefaultExchange { get; set; } = string.Empty;
     public string Status { get; set; } = "inactive";
+    public DateTime? LastTestedAt { get; set; }
+    public string? LastError { get; set; }
     public DateTime CreatedAt { get; set; }
 }

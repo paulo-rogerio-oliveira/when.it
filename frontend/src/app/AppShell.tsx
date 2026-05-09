@@ -14,6 +14,7 @@ export function AppShell() {
           <nav className="flex items-center gap-1 text-sm">
             <NavItem to="/">Dashboard</NavItem>
             <NavItem to="/connections">Conexões</NavItem>
+            <NavItem to="/rabbit-destinations">Destinos Rabbit</NavItem>
             <NavItem to="/recordings">Gravações</NavItem>
             <NavItem to="/rules">Regras</NavItem>
           </nav>

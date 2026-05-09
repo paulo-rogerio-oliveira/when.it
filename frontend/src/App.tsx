@@ -5,6 +5,8 @@ import { LoginPage } from "./features/auth/LoginPage";
 import { Dashboard } from "./features/dashboard/Dashboard";
 import { ConnectionList } from "./features/connections/ConnectionList";
 import { ConnectionEditor } from "./features/connections/ConnectionEditor";
+import { RabbitDestinationList } from "./features/rabbit-destinations/RabbitDestinationList";
+import { RabbitDestinationEditor } from "./features/rabbit-destinations/RabbitDestinationEditor";
 import { RecordingList } from "./features/recordings/RecordingList";
 import { RecordingWizard } from "./features/recordings/RecordingWizard";
 import { RecordingSession } from "./features/recordings/RecordingSession";
@@ -65,6 +67,9 @@ function AuthedRoutes() {
         <Route path="/connections" element={<ConnectionList />} />
         <Route path="/connections/new" element={<ConnectionEditor />} />
         <Route path="/connections/:id" element={<ConnectionEditor />} />
+        <Route path="/rabbit-destinations" element={<RabbitDestinationList />} />
+        <Route path="/rabbit-destinations/new" element={<RabbitDestinationEditor />} />
+        <Route path="/rabbit-destinations/:id" element={<RabbitDestinationEditor />} />
         <Route path="/recordings" element={<RecordingList />} />
         <Route path="/recordings/new" element={<RecordingWizard />} />
         <Route path="/recordings/:id/session" element={<RecordingSession />} />

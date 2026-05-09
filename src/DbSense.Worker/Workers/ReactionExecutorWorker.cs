@@ -129,6 +129,13 @@ public class ReactionExecutorWorker : BackgroundService
 
     private async Task ProcessAsync(OutboxMessage msg, CancellationToken ct)
     {
+        _logger.LogInformation(
+            "Processando outbox {OutboxId} ({Type}), events_log={EventsLogId}, tentativa={Attempt}.",
+            msg.Id,
+            msg.ReactionType,
+            msg.EventsLogId,
+            msg.Attempts);
+
         var ruleId = await GetRuleIdAsync(msg.EventsLogId, ct);
         var ruleVersion = 0;
         Rule? rule = null;
@@ -193,6 +200,11 @@ public class ReactionExecutorWorker : BackgroundService
             dbMsg.LastError = null;
             dbMsg.LockedBy = null;
             dbMsg.LockedUntil = null;
+            _logger.LogInformation(
+                "Outbox {OutboxId} ({Type}) processado com sucesso na tentativa {Attempt}.",
+                msg.Id,
+                msg.ReactionType,
+                msg.Attempts);
             if (dbLog is not null)
             {
                 dbLog.PublishStatus = "published";
@@ -210,6 +222,12 @@ public class ReactionExecutorWorker : BackgroundService
             if (attempts >= MaxAttempts)
             {
                 dbMsg.Status = "failed";
+                _logger.LogError(
+                    "Outbox {OutboxId} ({Type}) falhou definitivamente após {Attempt} tentativas. Erro: {Error}",
+                    msg.Id,
+                    msg.ReactionType,
+                    attempts,
+                    result.Error);
                 if (dbLog is not null)
                 {
                     dbLog.PublishStatus = "dead_lettered";
@@ -219,8 +237,17 @@ public class ReactionExecutorWorker : BackgroundService
             }
             else
             {
+                var nextAttemptAt = DateTime.UtcNow.Add(BackoffFor(attempts));
                 dbMsg.Status = "pending";
-                dbMsg.NextAttemptAt = DateTime.UtcNow.Add(BackoffFor(attempts));
+                dbMsg.NextAttemptAt = nextAttemptAt;
+                _logger.LogWarning(
+                    "Outbox {OutboxId} ({Type}) falhou na tentativa {Attempt}/{MaxAttempts}; novo retry em {NextAttemptAt:O}. Erro: {Error}",
+                    msg.Id,
+                    msg.ReactionType,
+                    attempts,
+                    MaxAttempts,
+                    nextAttemptAt,
+                    result.Error);
                 if (dbLog is not null)
                 {
                     dbLog.PublishStatus = "pending";

@@ -7,6 +7,7 @@ import { Label } from "@/shared/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import {
   activateRule,
+  deleteRule,
   getRule,
   pauseRule,
   testReaction,
@@ -41,6 +42,7 @@ export function RuleEditor() {
   const [testPayload, setTestPayload] = useState<string>('{ "after": { "id": 1 } }');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestReactionResult | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +172,31 @@ export function RuleEditor() {
     }
   };
 
+  const onDelete = async () => {
+    const activeWarning = rule.status === "active"
+      ? " Ela está ativa e será removida do Worker."
+      : "";
+    if (!window.confirm(
+      `Excluir a regra "${rule.name}"?${activeWarning} O histórico e outbox ligados a ela também serão removidos. Esta ação não pode ser desfeita.`,
+    )) {
+      return;
+    }
+
+    setError(null);
+    setDeleting(true);
+    try {
+      await deleteRule(rule.id);
+      navigate("/rules");
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } }; message?: string })
+        ?.response?.data?.error
+        ?? (e instanceof Error ? e.message : "Falha ao excluir.");
+      setError(msg);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -296,6 +323,9 @@ export function RuleEditor() {
       </details>
 
       <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="destructive" onClick={onDelete} disabled={deleting}>
+          {deleting ? "Excluindo..." : "Excluir regra"}
+        </Button>
         {rule.status === "active" ? (
           <Button variant="outline" onClick={onPause}>Pausar</Button>
         ) : (
