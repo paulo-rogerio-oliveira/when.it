@@ -15,22 +15,22 @@ concurrency:
 jobs:
   backend:
     name: Backend (.NET test)
-    runs-on: ubuntu-latest
+    # DbSense.Api e DbSense.Api.Tests targetam net8.0-windows (Integrated Security
+    # via SqlClient + APIs Win32). O resto do solution é cross-platform mas roda
+    # tudo aqui pra simplificar o pipeline.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      # API target = net10.0; testes target = net8.0 (Directory.Build.props).
-      # Instala os dois SDKs pra que ambos compilem.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             8.0.x
-            10.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
-          path: ~/.nuget/packages
+          path: ~\.nuget\packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props') }}
           restore-keys: |
             nuget-${{ runner.os }}-
@@ -81,3 +81,75 @@ jobs:
           name: frontend-dist
           path: frontend/dist/
           retention-days: 7
+
+  electron-installer:
+    name: Electron installer (Setup + Portable)
+    # Só em push pra main — PR não gera installer pra economizar minutos do runner
+    # (cada run baixa Electron + winCodeSign + nsis, ~120 MB sem cache, e roda
+    # publish self-contained de API + Worker, ~6 min). Use o release.yml com
+    # workflow_dispatch quando quiser instalador a partir de uma branch.
+    if: github.event_name == 'push'
+    needs: [backend, frontend]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            electron/package-lock.json
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~\.nuget\packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          # Cobre o download do binário do Electron + winCodeSign + nsis.
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('electron/package-lock.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install electron deps
+        working-directory: electron
+        run: npm ci
+
+      # `npm run dist` encadeia: build:frontend + publish:api + publish:worker + electron-builder.
+      # GH_TOKEN vazio impede o electron-builder de tentar publicar release direto;
+      # quem cuida disso é o workflow Release.
+      - name: Build installers
+        working-directory: electron
+        env:
+          GH_TOKEN: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbsense-windows-x64-${{ github.sha }}
+          path: |
+            electron/dist/*.exe
+            electron/dist/*.exe.blockmap
+            electron/dist/latest.yml
+          retention-days: 14

@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- Casado com DbSense.Api (net8.0-windows). Sem isso o restore reclama:
+         "project targets 'net8.0-windows'. It cannot be referenced by a project
+         that targets '.NETCoreApp,Version=v8.0'". -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>DbSense.Api.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
