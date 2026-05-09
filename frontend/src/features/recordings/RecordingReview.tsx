@@ -17,6 +17,7 @@ import {
   inferRule,
   type ClassifiedEvent,
   type InferRuleResponse,
+  type InferredCompanion,
   type InferredRulePayload,
 } from "@/shared/api/rules";
 import {
@@ -45,6 +46,22 @@ export function RecordingReview() {
   const [savingEngine, setSavingEngine] = useState<Engine | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [reaction, setReaction] = useState<ReactionState>(() => emptyReactionState());
+  // Companions desabilitados por engine (eventId desmarcado). Default: todos
+  // ligados — segue o que o motor inferiu. Quando salva, removemos do
+  // definition.correlation.companions[] os que estão aqui.
+  const [disabledCompanionIds, setDisabledCompanionIds] = useState<Record<Engine, Set<number>>>({
+    heuristic: new Set<number>(),
+    llm: new Set<number>(),
+  });
+
+  const toggleCompanion = (engine: Engine, eventId: number) => {
+    setDisabledCompanionIds((prev) => {
+      const next = new Set(prev[engine]);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return { ...prev, [engine]: next };
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -102,11 +119,15 @@ export function RecordingReview() {
       return;
     }
 
+    const disabled = disabledCompanionIds[engine];
+    const enabledCompanions = rule.companions.filter((c) => !disabled.has(c.eventId));
+
     let definition = rule.definitionJson;
     try {
-      definition = mergeReactionIntoDefinition(rule.definitionJson, reaction);
+      definition = applyCompanionSelection(definition, rule.companions, enabledCompanions);
+      definition = mergeReactionIntoDefinition(definition, reaction);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Falha ao montar reaction.");
+      setSaveError(e instanceof Error ? e.message : "Falha ao montar definition.");
       return;
     }
 
@@ -183,6 +204,8 @@ export function RecordingReview() {
           saving={savingEngine === "heuristic"}
           disabledSave={savingEngine !== null || !reactionValid}
           onSave={() => onSave("heuristic")}
+          disabledCompanionIds={disabledCompanionIds.heuristic}
+          onToggleCompanion={(eventId) => toggleCompanion("heuristic", eventId)}
         />
 
         {showLlm && (
@@ -205,6 +228,8 @@ export function RecordingReview() {
             saving={savingEngine === "llm"}
             disabledSave={savingEngine !== null || !reactionValid}
             onSave={() => onSave("llm")}
+            disabledCompanionIds={disabledCompanionIds.llm}
+            onToggleCompanion={(eventId) => toggleCompanion("llm", eventId)}
           />
         )}
       </div>
@@ -242,6 +267,7 @@ export function RecordingReview() {
 function EngineCard({
   title, subtitle, badge, badgeClass, enabled, success, error, rule, reasoning,
   name, description, onNameChange, onDescriptionChange, saving, disabledSave, onSave,
+  disabledCompanionIds, onToggleCompanion,
 }: {
   title: string;
   subtitle: string;
@@ -259,6 +285,8 @@ function EngineCard({
   saving: boolean;
   disabledSave: boolean;
   onSave: () => void;
+  disabledCompanionIds: Set<number>;
+  onToggleCompanion: (eventId: number) => void;
 }) {
   return (
     <Card>
@@ -346,22 +374,48 @@ function EngineCard({
                   Nenhum companion detectado — regra dispara só com o evento principal.
                 </p>
               ) : (
-                <ul className="space-y-1 text-xs">
-                  {rule.companions.map((c) => (
-                    <li key={c.eventId} className="flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          c.required ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {c.required ? "required" : "optional"}
-                      </span>
-                      <span className="font-mono">
-                        {c.operation.toUpperCase()} {c.schema ? `${c.schema}.` : ""}{c.table}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <p className="mb-1 text-[11px] text-muted-foreground">
+                    Clique para alternar inclusão. Os desmarcados saem do
+                    {" "}<code className="font-mono">correlation.companions</code> da regra ao salvar.
+                  </p>
+                  <ul className="space-y-1 text-xs">
+                    {rule.companions.map((c) => {
+                      const off = disabledCompanionIds.has(c.eventId);
+                      return (
+                        <li key={c.eventId}>
+                          <button
+                            type="button"
+                            onClick={() => onToggleCompanion(c.eventId)}
+                            className={`flex w-full items-center gap-2 rounded-md border px-2 py-1 text-left transition-colors ${
+                              off
+                                ? "border-slate-200 bg-slate-50 text-muted-foreground line-through opacity-70"
+                                : "border-border bg-background hover:bg-muted"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!off}
+                              readOnly
+                              tabIndex={-1}
+                              className="pointer-events-none"
+                            />
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                c.required ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {c.required ? "required" : "optional"}
+                            </span>
+                            <span className="font-mono">
+                              {c.operation.toUpperCase()} {c.schema ? `${c.schema}.` : ""}{c.table}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               )}
             </div>
 
@@ -520,6 +574,48 @@ function classToBadge(c: string, reason?: string | null) {
         : "bg-amber-100 text-amber-800";
     default: return "bg-muted text-muted-foreground";
   }
+}
+
+// Reescreve correlation.companions[] no definition JSON pra refletir a escolha
+// do usuário no review: mantém só os que o usuário deixou marcados (matching
+// por operation+schema+table contra a lista inferida).
+//
+// Se nenhum companion sobra, ajusta correlation.scope=none — replica a regra
+// do InferenceService.BuildPreview que escolhe scope baseado em ter ou não
+// companions. Sem isso, a rule iria ficar com scope time_window mas array
+// vazio, o que confunde o RuleEngine na hora de matchear.
+function applyCompanionSelection(
+  definitionJson: string,
+  inferred: InferredCompanion[],
+  enabled: InferredCompanion[],
+): string {
+  const def = JSON.parse(definitionJson);
+  if (!def?.correlation || !Array.isArray(def.correlation.companions)) return definitionJson;
+
+  const enabledKeys = new Set(
+    enabled.map((c) => companionKey(c.operation, c.schema, c.table)),
+  );
+
+  // Filtra preservando os campos serializados pelo backend (event_kind, required, etc.)
+  const filtered = (def.correlation.companions as Array<{
+    operation?: string;
+    schema?: string | null;
+    table?: string;
+    [k: string]: unknown;
+  }>).filter((c) =>
+    enabledKeys.has(companionKey(c.operation ?? "", c.schema ?? null, c.table ?? "")),
+  );
+
+  def.correlation.companions = filtered;
+  if (filtered.length === 0 && inferred.length > 0) {
+    // Inferiu N, usuário tirou todos → vira regra sem correlação.
+    def.correlation.scope = "none";
+  }
+  return JSON.stringify(def, null, 2);
+}
+
+function companionKey(operation: string, schema: string | null, table: string) {
+  return `${operation.toLowerCase()}|${(schema ?? "dbo").toLowerCase()}|${table.toLowerCase()}`;
 }
 
 function formatDuration(start: string, end: string) {

@@ -29,3 +29,16 @@ public record ProvisionResponse(
 public record CreateAdminRequest(string Username, string Password);
 
 public record CreateAdminResponse(Guid UserId, string Username);
+
+public record FinalizeSetupRequest(
+    string Server,
+    string Database,
+    string AuthType,
+    string? Username,
+    string? Password);
+
+public record FinalizeSetupResponse(
+    bool Success,
+    string? Error,
+    bool EnvVarsPersisted,
+    string[] PersistedKeys);

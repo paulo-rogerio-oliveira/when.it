@@ -186,7 +186,7 @@ END";
         }
     }
 
-    private static string BuildConnectionString(
+    public static string BuildConnectionString(
         string server, string database, string authType, string? username, string? password)
     {
         var builder = new SqlConnectionStringBuilder

@@ -89,7 +89,8 @@
       "PowerShell($p = Start-Process -FilePath 'C:\\\\projects\\\\when.it\\\\electron\\\\dist\\\\win-unpacked\\\\DbSense.exe' -PassThru; Write-Output \"Electron pid=$\\($p.Id\\) at $\\(\\(Get-Date\\).ToString\\('HH:mm:ss'\\)\\)\"; do { Start-Sleep -Seconds 2; try { $null = Invoke-WebRequest -Uri 'http://localhost:5000/api/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; $up = $true } catch { $up = $false } } until \\($up\\); Write-Output \"API up at $\\(\\(Get-Date\\).ToString\\('HH:mm:ss'\\)\\)\"; Write-Output ''; Write-Output '=== GET /api/status ==='; \\(Invoke-WebRequest -Uri 'http://localhost:5000/api/status' -UseBasicParsing\\).Content)",
       "PowerShell(winget install *)",
       "PowerShell($cs = 'Data Source=DESKTOP-I66H2NG\\\\SQLEXPRESS;Initial Catalog=dbsense_control_2;Integrated Security=True;TrustServerCertificate=True'; $c = New-Object System.Data.SqlClient.SqlConnection $cs; $c.Open\\(\\); $cmd = $c.CreateCommand\\(\\); $cmd.CommandText = \"SELECT Definition FROM dbsense.rules WHERE Id = '086b21ea-7946-4807-931c-a34eb59abba5'\"; $def = $cmd.ExecuteScalar\\(\\); $c.Close\\(\\); Write-Output 'Definition atual da rule atualizar_empresas:'; Write-Output $def)",
-      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" -e $nodeScript)"
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" -e $nodeScript)",
+      "Bash(npm --prefix /c/projects/when.it/frontend run build)"
     ]
   }
 }

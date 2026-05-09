@@ -65,4 +65,53 @@ public class SetupController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    // Persiste no escopo User do Windows (HKEY_CURRENT_USER\Environment) os
+    // segredos que hoje vêm via process env do Electron. Depois disso o app
+    // sobe sozinho mesmo sem dbsense.config.json — o próximo boot herda do SO.
+    //
+    // Os valores ConnectionStrings__ControlDb vêm do request (a connection que
+    // o usuário acabou de testar e provisionar no setup). Já as chaves de
+    // criptografia/JWT são lidas do process.env atual: o Electron já passou
+    // os valores corretos (gerados ou herdados do system env), então só replico
+    // pro escopo persistente — evita o usuário ter que digitar segredos.
+    [HttpPost("finalize")]
+    public ActionResult<FinalizeSetupResponse> Finalize([FromBody] FinalizeSetupRequest req)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Ok(new FinalizeSetupResponse(
+                Success: true,
+                Error: "Persistência de env vars só é suportada no Windows; nada foi alterado.",
+                EnvVarsPersisted: false,
+                PersistedKeys: Array.Empty<string>()));
+        }
+
+        var persisted = new List<string>();
+        try
+        {
+            var cs = ProvisioningService.BuildConnectionString(
+                req.Server, req.Database, req.AuthType, req.Username, req.Password);
+            Environment.SetEnvironmentVariable(
+                "ConnectionStrings__ControlDb", cs, EnvironmentVariableTarget.User);
+            persisted.Add("ConnectionStrings__ControlDb");
+
+            // Chaves só são persistidas se já existem no process env — não inventamos
+            // valores aqui; o Electron é o source-of-truth.
+            foreach (var key in new[] { "Security__EncryptionKey", "Security__JwtSecret" })
+            {
+                var current = Environment.GetEnvironmentVariable(key);
+                if (string.IsNullOrEmpty(current)) continue;
+                Environment.SetEnvironmentVariable(key, current, EnvironmentVariableTarget.User);
+                persisted.Add(key);
+            }
+
+            return Ok(new FinalizeSetupResponse(true, null, true, persisted.ToArray()));
+        }
+        catch (Exception ex)
+        {
+            return Ok(new FinalizeSetupResponse(
+                false, ex.Message, persisted.Count > 0, persisted.ToArray()));
+        }
+    }
 }

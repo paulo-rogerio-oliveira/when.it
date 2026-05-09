@@ -13,4 +13,13 @@
   <ItemGroup>
     <ProjectReference Include="..\DbSense.Core\DbSense.Core.csproj" />
   </ItemGroup>
+
+  <!-- appsettings* só pra dev (dotnet run pega do source). Na publish, a config
+       vem 100% de env vars (set pelo Electron ou system env), evitando vazar
+       defaults pro pacote. -->
+  <ItemGroup>
+    <Content Update="appsettings*.json">
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

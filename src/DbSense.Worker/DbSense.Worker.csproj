@@ -12,4 +12,11 @@
   <ItemGroup>
     <ProjectReference Include="..\DbSense.Core\DbSense.Core.csproj" />
   </ItemGroup>
+
+  <!-- appsettings* só pra dev. Na publish, a config vem 100% de env vars. -->
+  <ItemGroup>
+    <Content Update="appsettings*.json">
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

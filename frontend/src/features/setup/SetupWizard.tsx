@@ -75,7 +75,7 @@ export function SetupWizard({ initialStatus }: Props) {
               />
             )}
             {step === 4 && <CreateAdminUser onContinue={() => setStep(5)} />}
-            {step === 5 && <Complete onFinish={() => navigate("/login")} />}
+            {step === 5 && <Complete connection={connection} onFinish={() => navigate("/")} />}
           </CardContent>
         </Card>
       </div>

@@ -78,3 +78,17 @@ export async function createAdmin(req: CreateAdminRequest) {
   const r = await api.post<CreateAdminResponse>("/setup/create-admin", req);
   return r.data;
 }
+
+export type FinalizeSetupRequest = TestConnectionRequest;
+
+export type FinalizeSetupResponse = {
+  success: boolean;
+  error: string | null;
+  envVarsPersisted: boolean;
+  persistedKeys: string[];
+};
+
+export async function finalizeSetup(req: FinalizeSetupRequest) {
+  const r = await api.post<FinalizeSetupResponse>("/setup/finalize", req);
+  return r.data;
+}
