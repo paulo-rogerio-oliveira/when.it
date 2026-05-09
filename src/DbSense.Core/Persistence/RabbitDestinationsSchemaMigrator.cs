@@ -12,6 +12,8 @@ public static class RabbitDestinationsSchemaMigrator
 {
     public static async Task EnsureUpToDateAsync(DbSenseContext ctx, CancellationToken ct = default)
     {
+        // Provider InMemory (testes) não suporta ExecuteSqlRaw. Pula no-op.
+        if (!ctx.Database.IsRelational()) return;
         if (!await ctx.Database.CanConnectAsync(ct)) return;
 
         // OBJECT_ID retorna NULL se a tabela ainda não existe — nesse caso EnsureCreatedAsync

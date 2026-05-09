@@ -38,7 +38,7 @@ public class SecretCipher : ISecretCipher
 
         if (_key.Length != 32)
             throw new InvalidOperationException(
-                $"Security:EncryptionKey decoded to {_key.Length} bytes; AES-256 requires exactly 32.");
+                $"Security:EncryptionKey decoded to {_key.Length} bytes; AES-256 requires exactly 32 bytes.");
     }
 
     public byte[] Encrypt(string plaintext)

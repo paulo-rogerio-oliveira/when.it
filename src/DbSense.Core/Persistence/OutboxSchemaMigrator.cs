@@ -12,6 +12,8 @@ public static class OutboxSchemaMigrator
 {
     public static async Task EnsureUpToDateAsync(DbSenseContext ctx, CancellationToken ct = default)
     {
+        // Provider InMemory (testes) não suporta ExecuteSqlRaw. Pula no-op.
+        if (!ctx.Database.IsRelational()) return;
         if (!await ctx.Database.CanConnectAsync(ct)) return;
 
         var tableState = await ProbeAsync(ctx, ct);
