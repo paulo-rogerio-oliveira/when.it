@@ -54,6 +54,14 @@ export function RecordingReview() {
     llm: new Set<number>(),
   });
 
+  // Predicates editáveis por engine. Default: o que o motor inferiu, todos
+  // habilitados. Cada item é { field, op, value, enabled } — ao salvar, só
+  // os enabled entram no definition.trigger.predicate.all[].
+  const [predicateDrafts, setPredicateDrafts] = useState<Record<Engine, EditablePredicate[]>>({
+    heuristic: [],
+    llm: [],
+  });
+
   const toggleCompanion = (engine: Engine, eventId: number) => {
     setDisabledCompanionIds((prev) => {
       const next = new Set(prev[engine]);
@@ -61,6 +69,27 @@ export function RecordingReview() {
       else next.add(eventId);
       return { ...prev, [engine]: next };
     });
+  };
+
+  const updatePredicate = (engine: Engine, idx: number, patch: Partial<EditablePredicate>) => {
+    setPredicateDrafts((prev) => ({
+      ...prev,
+      [engine]: prev[engine].map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    }));
+  };
+
+  const addPredicate = (engine: Engine) => {
+    setPredicateDrafts((prev) => ({
+      ...prev,
+      [engine]: [...prev[engine], { field: "after.", op: "eq", value: "", enabled: true }],
+    }));
+  };
+
+  const removePredicate = (engine: Engine, idx: number) => {
+    setPredicateDrafts((prev) => ({
+      ...prev,
+      [engine]: prev[engine].filter((_, i) => i !== idx),
+    }));
   };
 
   useEffect(() => {
@@ -87,6 +116,10 @@ export function RecordingReview() {
               description: inference.heuristic.rule!.suggestedDescription,
             },
           }));
+          setPredicateDrafts((d) => ({
+            ...d,
+            heuristic: inference.heuristic.rule!.predicate.map((p) => ({ ...p, enabled: true })),
+          }));
         }
         if (inference.llm.rule) {
           setDraftByEngine((d) => ({
@@ -95,6 +128,10 @@ export function RecordingReview() {
               name: inference.llm.rule!.suggestedName,
               description: inference.llm.rule!.suggestedDescription,
             },
+          }));
+          setPredicateDrafts((d) => ({
+            ...d,
+            llm: inference.llm.rule!.predicate.map((p) => ({ ...p, enabled: true })),
           }));
         }
       } catch (e) {
@@ -121,9 +158,13 @@ export function RecordingReview() {
 
     const disabled = disabledCompanionIds[engine];
     const enabledCompanions = rule.companions.filter((c) => !disabled.has(c.eventId));
+    const enabledPredicates = predicateDrafts[engine]
+      .filter((p) => p.enabled && p.field.trim() !== "" && p.op.trim() !== "")
+      .map(({ field, op, value }) => ({ field: field.trim(), op: op.trim(), value }));
 
     let definition = rule.definitionJson;
     try {
+      definition = applyPredicateOverride(definition, enabledPredicates);
       definition = applyCompanionSelection(definition, rule.companions, enabledCompanions);
       definition = mergeReactionIntoDefinition(definition, reaction);
     } catch (e) {
@@ -206,6 +247,10 @@ export function RecordingReview() {
           onSave={() => onSave("heuristic")}
           disabledCompanionIds={disabledCompanionIds.heuristic}
           onToggleCompanion={(eventId) => toggleCompanion("heuristic", eventId)}
+          predicates={predicateDrafts.heuristic}
+          onPredicateChange={(idx, patch) => updatePredicate("heuristic", idx, patch)}
+          onPredicateAdd={() => addPredicate("heuristic")}
+          onPredicateRemove={(idx) => removePredicate("heuristic", idx)}
         />
 
         {showLlm && (
@@ -230,6 +275,10 @@ export function RecordingReview() {
             onSave={() => onSave("llm")}
             disabledCompanionIds={disabledCompanionIds.llm}
             onToggleCompanion={(eventId) => toggleCompanion("llm", eventId)}
+            predicates={predicateDrafts.llm}
+            onPredicateChange={(idx, patch) => updatePredicate("llm", idx, patch)}
+            onPredicateAdd={() => addPredicate("llm")}
+            onPredicateRemove={(idx) => removePredicate("llm", idx)}
           />
         )}
       </div>
@@ -268,6 +317,7 @@ function EngineCard({
   title, subtitle, badge, badgeClass, enabled, success, error, rule, reasoning,
   name, description, onNameChange, onDescriptionChange, saving, disabledSave, onSave,
   disabledCompanionIds, onToggleCompanion,
+  predicates, onPredicateChange, onPredicateAdd, onPredicateRemove,
 }: {
   title: string;
   subtitle: string;
@@ -287,6 +337,10 @@ function EngineCard({
   onSave: () => void;
   disabledCompanionIds: Set<number>;
   onToggleCompanion: (eventId: number) => void;
+  predicates: EditablePredicate[];
+  onPredicateChange: (idx: number, patch: Partial<EditablePredicate>) => void;
+  onPredicateAdd: () => void;
+  onPredicateRemove: (idx: number) => void;
 }) {
   return (
     <Card>
@@ -344,20 +398,76 @@ function EngineCard({
             </div>
 
             <div>
-              <h4 className="mb-1 text-xs font-semibold">Predicate</h4>
-              {rule.predicate.length === 0 ? (
+              <div className="mb-1 flex items-center justify-between">
+                <h4 className="text-xs font-semibold">Predicate</h4>
+                <button
+                  type="button"
+                  onClick={onPredicateAdd}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + adicionar cláusula
+                </button>
+              </div>
+              {predicates.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Nenhum predicate detectado — dispara em qualquer {rule.operation}.
+                  Nenhum predicate — dispara em qualquer {rule.operation}.
                 </p>
               ) : (
-                <ul className="space-y-1 text-xs font-mono">
-                  {rule.predicate.map((p, i) => (
-                    <li key={i}>
-                      <span className="text-muted-foreground">{p.field}</span>{" "}
-                      <span className="font-bold">{p.op}</span> <span>{p.value}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <p className="mb-1 text-[11px] text-muted-foreground">
+                    Desmarque pra excluir do JSON; valores são literais (case-insensitive).
+                    Operadores fora de <code>eq</code>/<code>ne</code> não filtram (ainda não implementados).
+                  </p>
+                  <ul className="space-y-1 text-xs">
+                    {predicates.map((p, i) => (
+                      <li
+                        key={i}
+                        className={`flex items-center gap-1 rounded-md border px-2 py-1 ${
+                          p.enabled ? "border-border bg-background" : "border-slate-200 bg-slate-50 opacity-70"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={p.enabled}
+                          onChange={(e) => onPredicateChange(i, { enabled: e.target.checked })}
+                          aria-label="Incluir cláusula"
+                        />
+                        <input
+                          value={p.field}
+                          onChange={(e) => onPredicateChange(i, { field: e.target.value })}
+                          placeholder="after.Coluna"
+                          className="h-7 flex-1 rounded border border-input bg-background px-2 font-mono text-[11px]"
+                        />
+                        <select
+                          value={p.op}
+                          onChange={(e) => onPredicateChange(i, { op: e.target.value })}
+                          className="h-7 rounded border border-input bg-background px-1 text-[11px]"
+                        >
+                          {SUPPORTED_OPS.map((op) => (
+                            <option key={op} value={op}>{op}</option>
+                          ))}
+                          {!SUPPORTED_OPS.includes(p.op as (typeof SUPPORTED_OPS)[number]) && (
+                            <option value={p.op}>{p.op} (não filtra)</option>
+                          )}
+                        </select>
+                        <input
+                          value={p.value}
+                          onChange={(e) => onPredicateChange(i, { value: e.target.value })}
+                          placeholder="valor"
+                          className="h-7 flex-1 rounded border border-input bg-background px-2 font-mono text-[11px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => onPredicateRemove(i)}
+                          aria-label="Remover cláusula"
+                          className="h-7 rounded border border-input bg-background px-2 text-[11px] hover:bg-muted"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
 
@@ -574,6 +684,32 @@ function classToBadge(c: string, reason?: string | null) {
         : "bg-amber-100 text-amber-800";
     default: return "bg-muted text-muted-foreground";
   }
+}
+
+// Tipo do predicate editável na UI (estende o inferido com flag de inclusão).
+type EditablePredicate = { field: string; op: string; value: string; enabled: boolean };
+
+// Operadores que o RuleEngine.EvaluateClause de fato implementa hoje
+// (qualquer outro cai em `_ => true` e não filtra). Mantemos só os que filtram
+// pra não dar falso match silencioso.
+const SUPPORTED_OPS = ["eq", "ne"] as const;
+
+// Reescreve definition.trigger.predicate com as cláusulas que o usuário deixou
+// habilitadas. Mantém o shape { all: [...] } usado pelo InferenceService para
+// que o RuleEngine continue lendo igual. Se a lista filtrada fica vazia, joga
+// um objeto vazio — o RuleEngine trata predicate ausente/vazio como "passa".
+function applyPredicateOverride(
+  definitionJson: string,
+  enabled: { field: string; op: string; value: string }[],
+): string {
+  const def = JSON.parse(definitionJson);
+  if (!def?.trigger) return definitionJson;
+  if (enabled.length === 0) {
+    def.trigger.predicate = {};
+  } else {
+    def.trigger.predicate = { all: enabled };
+  }
+  return JSON.stringify(def, null, 2);
 }
 
 // Reescreve correlation.companions[] no definition JSON pra refletir a escolha
