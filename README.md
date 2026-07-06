@@ -1,4 +1,4 @@
-# DbSense
+# DbSense AB
 
 Plataforma para transformar operações DML em eventos de domínio sem mexer na aplicação alvo:
 captura SQL via Extended Events do SQL Server, extrai a estrutura da operação, infere uma
